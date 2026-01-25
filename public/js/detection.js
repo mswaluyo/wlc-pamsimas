@@ -1,0 +1,69 @@
+document.addEventListener('DOMContentLoaded', function() {
+    const scanButton = document.getElementById('scan-button');
+    const scanStatus = document.getElementById('scan-status');
+    const loadingSpinner = document.getElementById('loading-spinner');
+    const deviceList = document.getElementById('device-list');
+    const scanWrapper = document.querySelector('.scan-icon-wrapper');
+
+    scanButton.addEventListener('click', function() {
+        // 1. Update UI ke status scanning
+        scanButton.disabled = true;
+        scanButton.style.display = 'none';
+        loadingSpinner.style.display = 'block';
+        scanStatus.textContent = 'Sedang memindai jaringan untuk perangkat aktif...';
+        scanWrapper.classList.add('scanning');
+        deviceList.innerHTML = ''; // Bersihkan hasil sebelumnya
+
+        // 2. Panggil API (Simulasi delay agar terlihat seperti scanning sungguhan)
+        setTimeout(() => {
+            fetch(BASE_URL + 'api/detected-devices')
+                .then(response => response.json())
+                .then(data => {
+                    renderDevices(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    scanStatus.innerHTML = '<span style="color: red;">Terjadi kesalahan saat memindai.</span>';
+                })
+                .finally(() => {
+                    // 3. Kembalikan UI ke status normal
+                    scanButton.disabled = false;
+                    scanButton.style.display = 'inline-block';
+                    scanButton.innerHTML = '<i class="fas fa-redo"></i> Scan Ulang';
+                    loadingSpinner.style.display = 'none';
+                    scanWrapper.classList.remove('scanning');
+                });
+        }, 1500); // Delay 1.5 detik untuk efek visual
+    });
+
+    function renderDevices(devices) {
+        if (devices.length === 0) {
+            scanStatus.textContent = 'Tidak ditemukan perangkat baru yang belum terdaftar.';
+            return;
+        }
+
+        scanStatus.textContent = `Ditemukan ${devices.length} perangkat baru!`;
+
+        devices.forEach(mac => {
+            const deviceCard = document.createElement('div');
+            deviceCard.className = 'device-item';
+            
+            // URL untuk mendaftarkan perangkat
+            const registerUrl = `${BASE_URL}controllers/register?mac=${encodeURIComponent(mac)}`;
+
+            deviceCard.innerHTML = `
+                <div>
+                    <h3 style="margin: 0 0 5px 0; color: var(--secondary-color);">WLC Controller</h3>
+                    <div style="font-family: monospace; color: var(--dark-gray); font-size: 1.1em;">
+                        <i class="fas fa-microchip"></i> ${mac}
+                    </div>
+                    <small style="color: var(--success-color);"><i class="fas fa-circle" style="font-size: 8px;"></i> Online</small>
+                </div>
+                <a href="${registerUrl}" class="btn btn-success btn-sm">
+                    <i class="fas fa-plus"></i> Daftar
+                </a>
+            `;
+            deviceList.appendChild(deviceCard);
+        });
+    }
+});

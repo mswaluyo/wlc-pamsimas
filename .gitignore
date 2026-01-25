@@ -1,0 +1,15 @@
+# File Konfigurasi Sensitif (JANGAN DIHAPUS DARI SINI)
+/.env
+
+# Folder Vendor (Jika nanti menggunakan Composer)
+/vendor
+
+# File Runtime & Storage
+/storage/backups/*
+!/storage/backups/.gitkeep
+/storage/detected_macs.json
+/.maintenance
+
+# System Files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,27 @@
+/* Gaya untuk Simple Bar Gauge */
+.gauge-card .simple-bar-gauge-container {
+    width: 100%;
+    height: 30px;
+    background-color: #ecf0f1;
+    border-radius: 15px;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #bdc3c7;
+}
+
+.gauge-card .simple-bar-gauge-fill {
+    height: 100%;
+    width: 0%; /* Lebar awal, diubah oleh JS */
+    border-radius: 15px;
+    transition: width 0.5s ease-out, background-color 0.5s ease;
+}
+
+.gauge-card .simple-bar-gauge-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+}
