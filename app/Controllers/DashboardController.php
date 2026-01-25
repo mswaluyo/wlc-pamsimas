@@ -5,6 +5,8 @@ namespace app\Controllers;
 use app\Models\Controller;
 use app\Models\IndicatorSetting;
 use app\Models\Tank;
+use app\Models\Pump;
+use app\Models\Sensor;
 use app\Models\User;
 
 class DashboardController {
@@ -19,6 +21,8 @@ class DashboardController {
     public function index() {
         $controllers = Controller::getAll();
         $tanks = Tank::getAll();
+        $pumps = Pump::getAll();
+        $sensors = Sensor::getAll();
         $users = User::getAll();
 
         // Hitung statistik
@@ -28,6 +32,45 @@ class DashboardController {
             // Anggap online jika update dalam 5 menit terakhir (300 detik)
             if (strtotime($controller['last_update']) > (time() - 300)) {
                 $onlineControllers++;
+            }
+        }
+
+        // --- LOGIKA BARU: Cek Sinkronisasi ---
+        // Indexing data master untuk lookup cepat
+        $tanksMap = [];
+        foreach ($tanks as $t) $tanksMap[$t['id']] = $t;
+        
+        $pumpsMap = [];
+        foreach ($pumps as $p) $pumpsMap[$p['id']] = $p;
+        
+        $sensorsMap = [];
+        foreach ($sensors as $s) $sensorsMap[$s['id']] = $s;
+
+        $outOfSyncDevices = [];
+
+        foreach ($controllers as $c) {
+            $isSync = true;
+            $details = [];
+
+            // Cek Tangki
+            if (isset($tanksMap[$c['tank_id']]) && $c['empty_tank_distance'] != $tanksMap[$c['tank_id']]['height']) {
+                $isSync = false;
+                $details[] = 'Tinggi Tangki';
+            }
+            // Cek Sensor
+            if (isset($sensorsMap[$c['sensor_id']])) {
+                if ($c['full_tank_distance'] != $sensorsMap[$c['sensor_id']]['full_tank_distance']) { $isSync = false; $details[] = 'Jarak Penuh'; }
+                if ($c['trigger_percentage'] != $sensorsMap[$c['sensor_id']]['trigger_percentage']) { $isSync = false; $details[] = 'Pemicu'; }
+            }
+            // Cek Pompa
+            if (isset($pumpsMap[$c['pump_id']])) {
+                if ($c['on_duration'] != (int)($pumpsMap[$c['pump_id']]['on_duration_seconds'] / 60)) { $isSync = false; $details[] = 'Durasi Nyala'; }
+                if ($c['off_duration'] != (int)($pumpsMap[$c['pump_id']]['off_duration_seconds'] / 60)) { $isSync = false; $details[] = 'Durasi Mati'; }
+            }
+
+            if (!$isSync) {
+                $c['sync_issues'] = implode(', ', array_unique($details));
+                $outOfSyncDevices[] = $c;
             }
         }
 
@@ -73,7 +116,8 @@ class DashboardController {
             ],
             'controllers' => $controllers,
             'indicator_settings' => $indicatorSettings,
-            'active_template' => $activeTemplateData // Kirim data template yang sudah diproses
+            'active_template' => $activeTemplateData, // Kirim data template yang sudah diproses
+            'out_of_sync_devices' => $outOfSyncDevices // Data perangkat yang tidak sinkron
         ];
 
         view('dashboard/index', $data);

@@ -140,6 +140,8 @@ class SettingController {
             'flow_rate_lps' => $_POST['flow_rate_lps'] ?? 0,
             'power_watt' => $_POST['power_watt'] ?? 0,
             'delay_seconds' => $_POST['delay_seconds'] ?? 0,
+            'on_duration_seconds' => $_POST['on_duration_seconds'] ?? 300,
+            'off_duration_seconds' => $_POST['off_duration_seconds'] ?? 900,
         ];
 
         Pump::create($data);
@@ -175,6 +177,8 @@ class SettingController {
             'flow_rate_lps' => $_POST['flow_rate_lps'] ?? 0,
             'power_watt' => $_POST['power_watt'] ?? 0,
             'delay_seconds' => $_POST['delay_seconds'] ?? 0,
+            'on_duration_seconds' => $_POST['on_duration_seconds'] ?? 300,
+            'off_duration_seconds' => $_POST['off_duration_seconds'] ?? 900,
         ];
 
         Pump::update((int)$id, $data);

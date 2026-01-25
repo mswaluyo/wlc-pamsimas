@@ -22,6 +22,13 @@ class Controller {
                 c.control_mode,
                 c.last_update,
                 c.rssi, 
+                c.tank_id,
+                c.pump_id,
+                c.sensor_id,
+                c.empty_tank_distance,
+                c.trigger_percentage,
+                c.on_duration,
+                c.off_duration,
                 t.tank_name,
                 t.height AS tank_height,
                 c.full_tank_distance,
@@ -124,7 +131,7 @@ class Controller {
 
             // 1. Masukkan ke tabel controllers
             // PERBAIKAN: Sesuaikan query INSERT dengan struktur tabel yang benar
-            $sql = "INSERT INTO controllers (mac_address, tank_id, pump_id, sensor_id, full_tank_distance, empty_tank_distance, trigger_percentage, restart_command) VALUES (:mac_address, :tank_id, :pump_id, :sensor_id, :full_tank_distance, :empty_tank_distance, :trigger_percentage, :restart_command)";
+            $sql = "INSERT INTO controllers (mac_address, tank_id, pump_id, sensor_id, full_tank_distance, empty_tank_distance, trigger_percentage, on_duration, off_duration, restart_command) VALUES (:mac_address, :tank_id, :pump_id, :sensor_id, :full_tank_distance, :empty_tank_distance, :trigger_percentage, :on_duration, :off_duration, :restart_command)";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($data);
 

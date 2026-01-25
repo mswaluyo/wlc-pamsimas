@@ -22,6 +22,18 @@
             <input type="number" id="delay_seconds" name="delay_seconds" value="<?php echo htmlspecialchars($pump['delay_seconds'] ?? '0'); ?>" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         </div>
 
+        <div style="margin-bottom: 15px;">
+            <label for="on_duration_seconds" style="display: block; margin-bottom: 5px;">Durasi Nyala (Detik)</label>
+            <input type="number" id="on_duration_seconds" name="on_duration_seconds" value="<?php echo htmlspecialchars($pump['on_duration_seconds'] ?? '300'); ?>" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <small style="color: #666;">Contoh: 300 = 5 menit</small>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="off_duration_seconds" style="display: block; margin-bottom: 5px;">Durasi Istirahat (Detik)</label>
+            <input type="number" id="off_duration_seconds" name="off_duration_seconds" value="<?php echo htmlspecialchars($pump['off_duration_seconds'] ?? '900'); ?>" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <small style="color: #666;">Contoh: 900 = 15 menit</small>
+        </div>
+
         <div>
             <button type="submit" style="background-color: #3498db; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer;">Simpan</button>
             <a href="<?= base_url('/settings/pumps') ?>" style="display: inline-block; margin-left: 10px; color: #333;">Batal</a>

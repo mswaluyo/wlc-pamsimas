@@ -25,7 +25,7 @@ const char* ssid = "Pamsimas Tirto Argo";  // Ganti dengan SSID Wi-Fi Anda
 const char* pass = "p@msim45";             // Ganti dengan Password Wi-Fi Anda
 
 // --- Konfigurasi Server API ---
-const char* server_domain = "apps.selur.desa.id"; // PERBAIKAN: Domain server yang benar
+const char* server_domain = "pamsimas.selur.my.id"; // PERBAIKAN: Domain server yang benar
 const int server_port = 443; // Port standar untuk HTTPS
 const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";                      // API Key harus SAMA PERSIS dengan yang di PHP
 const char* api_log_endpoint = "/public/api/log";                  // Sesuaikan dengan struktur URL di server live
@@ -33,7 +33,7 @@ const char* api_status_endpoint = "/public/api/status";            // Sesuaikan 
 const char* api_offline_log_endpoint = "/public/api/log-offline";  // Sesuaikan dengan struktur URL di server live
 
 // Fingerprint SHA1 dari sertifikat SSL/TLS server Anda.
-// Anda bisa mendapatkannya dengan membuka https://apps.selur.desa.id/ di browser, klik ikon gembok, lihat detail sertifikat.
+// Anda bisa mendapatkannya dengan membuka https://pamsimas.selur.my.id/ di browser, klik ikon gembok, lihat detail sertifikat.
 const char* fingerprint = "XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX"; // GANTI DENGAN FINGERPRINT ASLI SERVER ANDA
 
 // --- Konfigurasi Perangkat ---

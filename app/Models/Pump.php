@@ -2,54 +2,71 @@
 
 namespace app\Models;
 
+use PDO;
+
 class Pump {
     /**
-     * Mengambil semua data pompa dari database.
-     * @return array
+     * Mengambil semua data pompa.
      */
-    public static function getAll(): array {
+    public static function getAll() {
         $pdo = \Database::getInstance()->getConnection();
-        $sql = "SELECT id, pump_name, flow_rate_lps, power_watt, delay_seconds FROM pumps ORDER BY id ASC";
-        $stmt = $pdo->query($sql);
-        return $stmt->fetchAll();
+        $stmt = $pdo->query("SELECT * FROM pumps ORDER BY pump_name ASC");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**
-     * Mencari pompa berdasarkan ID.
-     * @param int $id
-     * @return mixed
+     * Mengambil data satu pompa berdasarkan ID.
      */
-    public static function findById(int $id) {
+    public static function findById($id) {
         $pdo = \Database::getInstance()->getConnection();
-        $sql = "SELECT * FROM pumps WHERE id = :id";
-        $stmt = $pdo->prepare($sql);
+        $stmt = $pdo->prepare("SELECT * FROM pumps WHERE id = :id");
         $stmt->execute([':id' => $id]);
-        return $stmt->fetch();
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     /**
-     * Membuat pompa baru.
-     * @param array $data
-     * @return bool
+     * Membuat data pompa baru secara dinamis.
      */
-    public static function create(array $data): bool {
+    public static function create(array $data) {
         $pdo = \Database::getInstance()->getConnection();
-        $sql = "INSERT INTO pumps (pump_name, flow_rate_lps, power_watt, delay_seconds) VALUES (:pump_name, :flow_rate_lps, :power_watt, :delay_seconds)";
+        
+        // Buat daftar kolom dan placeholder secara otomatis dari array data
+        $columns = implode(', ', array_keys($data));
+        $placeholders = ':' . implode(', :', array_keys($data));
+        
+        $sql = "INSERT INTO pumps ($columns) VALUES ($placeholders)";
         $stmt = $pdo->prepare($sql);
         return $stmt->execute($data);
     }
 
     /**
-     * Memperbarui data pompa.
-     * @param int $id
-     * @param array $data
-     * @return bool
+     * Memperbarui data pompa secara dinamis.
+     * Ini memperbaiki error "Invalid parameter number".
      */
-    public static function update(int $id, array $data): bool {
+    public static function update($id, array $data) {
+        $pdo = \Database::getInstance()->getConnection();
+        
+        // Buat klausa SET secara otomatis (misal: pump_name = :pump_name)
+        $setClauses = [];
+        foreach (array_keys($data) as $key) {
+            $setClauses[] = "$key = :$key";
+        }
+        
+        $sql = "UPDATE pumps SET " . implode(', ', $setClauses) . " WHERE id = :id";
+        
+        // Tambahkan ID ke array data agar cocok dengan placeholder :id di WHERE
         $data['id'] = $id;
-        $pdo = \Database::getInstance()->getConnection();
-        $sql = "UPDATE pumps SET pump_name = :pump_name, flow_rate_lps = :flow_rate_lps, power_watt = :power_watt, delay_seconds = :delay_seconds WHERE id = :id";
+        
         $stmt = $pdo->prepare($sql);
         return $stmt->execute($data);
+    }
+
+    /**
+     * Menghapus data pompa.
+     */
+    public static function delete($id) {
+        $pdo = \Database::getInstance()->getConnection();
+        $stmt = $pdo->prepare("DELETE FROM pumps WHERE id = :id");
+        return $stmt->execute([':id' => $id]);
     }
 }

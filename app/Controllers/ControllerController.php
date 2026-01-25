@@ -155,6 +155,14 @@ class ControllerController {
             exit();
         }
 
+        // Ambil data pompa yang dipilih untuk mendapatkan durasi default
+        $pump = Pump::findById((int)$pump_id);
+        if (!$pump) {
+            // Handle error jika pompa tidak ditemukan
+            header('Location: ' . base_url('/controllers/register?mac=' . urlencode($mac_address)));
+            exit();
+        }
+
         $data = [
             'mac_address' => $mac_address,
             'tank_id' => (int)$tank_id,
@@ -163,6 +171,8 @@ class ControllerController {
             'full_tank_distance' => (int)$sensor['full_tank_distance'],
             'empty_tank_distance' => (int)$tank['height'], // Perbaikan: Nama parameter sudah benar, pastikan tipe data integer
             'trigger_percentage' => $sensor['trigger_percentage'],
+            'on_duration' => (int)($pump['on_duration_seconds'] / 60),
+            'off_duration' => (int)($pump['off_duration_seconds'] / 60),
             // Tambahkan perintah restart otomatis setelah pendaftaran
             'restart_command' => 1
         ];
