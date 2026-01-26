@@ -1143,6 +1143,22 @@ body.login-page {
     .controller-detail-grid {
         grid-template-columns: 1fr;
     }
+
+    /* Penyesuaian Layout untuk Mobile / WebView */
+    .main-container {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        overflow-y: visible;
+    }
+
+    .content {
+        padding: 15px;
+    }
 }
 
 /* --- Gaya Tabs untuk Halaman Maintenance --- */
