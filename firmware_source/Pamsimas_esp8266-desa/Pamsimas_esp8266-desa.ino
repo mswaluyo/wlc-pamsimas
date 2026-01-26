@@ -28,14 +28,13 @@ const char* pass = "p@msim45";             // Ganti dengan Password Wi-Fi Anda
 const char* server_domain = "pamsimas.selur.my.id"; // PERBAIKAN: Domain server yang benar
 const int server_port = 443; // Port standar untuk HTTPS
 const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";                      // API Key harus SAMA PERSIS dengan yang di PHP
-const char* api_log_endpoint = "/public/api/log";                  // Sesuaikan dengan struktur URL di server live
-const char* api_status_endpoint = "/public/api/status";            // Sesuaikan dengan struktur URL di server live
-const char* api_offline_log_endpoint = "/public/api/log-offline";  // Sesuaikan dengan struktur URL di server live
+const char* api_log_endpoint = "/api/log";                  // Sesuaikan dengan struktur URL di server live
+const char* api_status_endpoint = "/api/status";            // Sesuaikan dengan struktur URL di server live
+const char* api_offline_log_endpoint = "/api/log-offline";  // Sesuaikan dengan struktur URL di server live
 
 // Fingerprint SHA1 dari sertifikat SSL/TLS server Anda.
-// Anda bisa mendapatkannya dengan membuka https://pamsimas.selur.my.id/ di browser, klik ikon gembok, lihat detail sertifikat.
-// const char* fingerprint = "XX XX ..."; // OPSI 1: Pakai ini jika sertifikat statis (berbayar tahunan)
-// OPSI 2: Kita akan gunakan setInsecure() di bawah agar tidak perlu ganti koding tiap 3 bulan (Let's Encrypt)
+// Anda bisa mendapatkannya dengan membuka https://apps.selur.desa.id/ di browser, klik ikon gembok, lihat detail sertifikat.
+const char* fingerprint = ""; // Tidak digunakan karena kita menggunakan setInsecure()
 
 // --- Konfigurasi Perangkat ---
 char deviceMacAddress[18];                    // Akan diisi secara otomatis (17 karakter + null terminator)
@@ -397,15 +396,13 @@ void syncTime() {
 void fetchQuickStatus() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  WiFiClient client;
   WiFiClientSecure secureClient; // Gunakan secureClient untuk HTTPS
+  secureClient.setInsecure();    // Abaikan validasi sertifikat agar koneksi HTTPS lancar
   HTTPClient http; 
   char serverPath[128];
   snprintf(serverPath, sizeof(serverPath), "https://%s%s?mac=%s", server_domain, api_status_endpoint, deviceMacAddress); // Gunakan https dan server_domain
 
-  secureClient.setInsecure(); // TAMBAHAN: Abaikan validasi sertifikat agar tidak error saat renew SSL 90 hari
-
-  if (http.begin(secureClient, serverPath)) { // Hapus parameter fingerprint
+  if (http.begin(secureClient, serverPath)) { // Gunakan secureClient
     http.addHeader("X-API-Key", api_key);
     int httpResponseCode = http.GET();
 
@@ -468,7 +465,7 @@ void fetchControlStatus() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   WiFiClientSecure client;
-  client.setInsecure(); // Abaikan validasi SSL
+  client.setInsecure();
   HTTPClient http;
   char serverPath[128];
   snprintf(serverPath, sizeof(serverPath), "https://%s%s?mac=%s", server_domain, api_status_endpoint, deviceMacAddress);
@@ -653,12 +650,11 @@ void sendSensorData(float percentage, float cm) {
   }
 
   WiFiClientSecure client;
-  client.setInsecure(); // Abaikan validasi SSL
+  client.setInsecure();
   HTTPClient http;
   char serverPath[128];
   snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_log_endpoint);
 
-  Serial.printf("DEBUG: Mengirim data sensor ke URL: %s dengan MAC: %s\n", serverPath, deviceMacAddress);
   if (http.begin(client, serverPath)) {
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-API-Key", api_key);
@@ -700,13 +696,14 @@ void sendControlCommand(const char* action, const char* value) {
   }
 
   WiFiClientSecure client;
-  client.setInsecure(); // Abaikan validasi SSL
+  client.setInsecure();
   HTTPClient http;
   char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s/public/api/update", server_domain);
+  snprintf(serverPath, sizeof(serverPath), "https://%s/api/update", server_domain);
 
   if (http.begin(client, serverPath)) {
     http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-API-Key", api_key); // PERBAIKAN: Tambahkan header API Key yang hilang
     StaticJsonDocument<200> doc;
     doc["mac"] = deviceMacAddress;
     doc["action"] = action;
@@ -739,7 +736,7 @@ void sendOfflineLogs() {
   Serial.println("Membaca log offline untuk dikirim ke server...");
 
   WiFiClientSecure client;
-  client.setInsecure(); // Abaikan validasi SSL
+  client.setInsecure();
   HTTPClient http;
   char serverPath[128];
   snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_offline_log_endpoint);

@@ -11,10 +11,27 @@ use app\Models\DetectedDevice;
 class DeviceApiController {
 
     /**
+     * Helper: Memvalidasi API Key dari header request.
+     */
+    private function validateApiKey() {
+        $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? null;
+        // Ambil dari .env atau gunakan default yang sama dengan firmware
+        $serverKey = getenv('DEVICE_API_KEY') ?: 'P4mS1m4s-T1rt0-Arg0-2025'; 
+
+        if (!$apiKey || $apiKey !== $serverKey) {
+            http_response_code(401); // Unauthorized
+            echo json_encode(['error' => 'Unauthorized: Invalid or missing API Key']);
+            exit();
+        }
+    }
+
+    /**
      * Menerima dan mencatat data sensor dari perangkat.
      * Ini adalah endpoint untuk HTTP POST dari sendSensorData().
      */
     public function log() {
+        $this->validateApiKey(); // Validasi keamanan
+
         $json_data = file_get_contents('php://input');
 
         if (!$json_data) {
@@ -95,6 +112,8 @@ class DeviceApiController {
      * Ini adalah endpoint untuk HTTP GET.
      */
     public function status() {
+        $this->validateApiKey(); // Validasi keamanan
+
         $mac_address = $_GET['mac'] ?? null;
         if (!$mac_address) {
             http_response_code(400);
@@ -139,6 +158,8 @@ class DeviceApiController {
      * Ini adalah endpoint untuk HTTP POST dari sendControlCommand().
      */
     public function update() {
+        $this->validateApiKey(); // Validasi keamanan
+
         $json_data = file_get_contents('php://input');
         if (!$json_data) {
             http_response_code(400);
@@ -224,6 +245,8 @@ class DeviceApiController {
      * Menerima data log yang disimpan saat perangkat offline.
      */
     public function logOffline() {
+        $this->validateApiKey(); // Validasi keamanan
+
         $json_data = file_get_contents('php://input');
         $data = json_decode($json_data, true);
 

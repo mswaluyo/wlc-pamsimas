@@ -83,6 +83,20 @@
             </li>
             <?php endif; ?>
 
+            <li class="nav-header">ANALISIS & LOG</li>
+            <li class="nav-item"> 
+                <a href="<?= base_url('/logs/sensors') ?>" class="<?= isActive('/logs/sensors') ?>">
+                    <i class="fas fa-chart-line nav-icon"></i>
+                    <span>Log Sensor</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="<?= base_url('/logs/pumps') ?>" class="<?= isActive('/logs/pumps') ?>">
+                    <i class="fas fa-history nav-icon"></i>
+                    <span>Riwayat Pompa</span>
+                </a>
+            </li>
+
             <li class="nav-header">AKUN</li>
             <li class="nav-item">
                 <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
