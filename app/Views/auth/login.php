@@ -11,6 +11,9 @@
 </head>
 <body class="login-page">
     <div class="login-container">
+        <div style="text-align: center; margin-bottom: 10px;">
+            <img src="<?= base_url('/img/logo.png') ?>" alt="Logo" style="width: 80px; height: auto;">
+        </div>
         <h1 style="text-align: center; border-bottom: none;">WLC Login</h1>
 
         <?php
@@ -38,10 +41,27 @@
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                <div class="password-wrapper">
+                    <input type="password" id="password" name="password" required>
+                    <i class="fas fa-eye toggle-password" id="togglePassword"></i>
+                </div>
             </div>
             <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
         </form>
     </div>
+    <script>
+        const togglePassword = document.querySelector('#togglePassword');
+        const password = document.querySelector('#password');
+
+        togglePassword.addEventListener('click', function (e) {
+            // Toggle tipe input antara password dan text
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            
+            // Toggle ikon mata (antara fa-eye dan fa-eye-slash)
+            this.classList.toggle('fa-eye');
+            this.classList.toggle('fa-eye-slash');
+        });
+    </script>
 </body>
 </html>

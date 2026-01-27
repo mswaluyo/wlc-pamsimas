@@ -2,18 +2,12 @@
     <h1><?php echo $title ?? 'Pengaturan Tangki'; ?></h1>
     <p>Halaman ini digunakan untuk mengelola konfigurasi aset fisik tangki air.</p>
 
-    <div style="margin-bottom: 20px;">
-        <a href="<?= base_url('/settings/tanks/create') ?>" class="btn btn-success">
-            <i class="fas fa-plus-circle"></i> Tambah Tangki Baru
-        </a>
-    </div>
-
     <!-- Bagian Pengaturan Tangki -->
     <div>
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th class="col-number">No</th>
                     <th>Nama Tangki</th>
                     <th>Bentuk</th>
                     <th>Tinggi (cm)</th>
@@ -22,10 +16,11 @@
                 </tr>
             </thead>
             <tbody>
+                <?php $no = 1; ?>
                 <?php if (!empty($tanks)): ?>
                     <?php foreach ($tanks as $tank): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($tank['id']); ?></td>
+                            <td class="col-number"><?= $no++ ?></td>
                             <td><?php echo htmlspecialchars($tank['tank_name']); ?></td>
                             <td><?php echo htmlspecialchars(ucfirst($tank['tank_shape'])); ?></td>
                             <td><?php echo htmlspecialchars($tank['height']); ?></td>
@@ -38,7 +33,9 @@
                                 }
                                 ?>
                             </td>
-                            <td><a href="<?= base_url('/settings/tanks/edit/' . $tank['id']) ?>">Edit</a></td>
+                            <td class="action-buttons">
+                                <a href="<?= base_url('/settings/tanks/edit/' . $tank['id']) ?>" class="btn btn-sm btn-info" title="Edit"><i class="fas fa-edit"></i></a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
@@ -48,5 +45,11 @@
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+
+    <div class="table-footer-actions">
+        <a href="<?= base_url('/settings/tanks/create') ?>" class="btn btn-success">
+            <i class="fas fa-plus-circle"></i> Tambah Tangki Baru
+        </a>
     </div>
 </div>

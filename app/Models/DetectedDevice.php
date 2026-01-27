@@ -51,7 +51,7 @@ class DetectedDevice {
      */
     public static function getActiveUnregistered(): array {
         $filePath = self::getFilePath();
-        $activePeriod = 300; // Anggap aktif jika terlihat dalam 5 menit (300 detik)
+        $activePeriod = 60; // Ubah ke 60 detik
 
         // 1. Baca dari file
         $detectedDevices = [];

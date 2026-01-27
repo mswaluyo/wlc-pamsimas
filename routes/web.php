@@ -40,7 +40,7 @@ $router->get('/settings/sensors/edit/{id}', 'SettingController@editSensor'); // 
 $router->post('/settings/sensors/edit/{id}', 'SettingController@updateSensor'); // Update sensor
 $router->get('/settings/display', 'SettingController@displaySettings'); // Pengaturan tampilan
 $router->post('/settings/display', 'SettingController@displaySettings'); // Simpan pengaturan tampilan
-$router->post('/settings/display/reset', 'SettingController@resetDisplaySettings'); // Reset pengaturan tampilan
+$router->get('/settings/display/reset', 'SettingController@resetDisplaySettings'); // Reset pengaturan tampilan
 $router->get('/settings/indicators', 'SettingController@indicators'); // Rute lama, akan redirect
 $router->get('/settings/database/backup', 'SettingController@backupDatabase'); // Aksi backup
 $router->post('/settings/database/restore', 'SettingController@restoreDatabase'); // Aksi restore
@@ -57,3 +57,6 @@ $router->post('/templates/delete/{id}', 'TemplateController@delete'); // Hapus t
 
 // Rute untuk halaman deteksi perangkat real-time
 $router->get('/detect', 'DetectionController@index'); // Deteksi perangkat
+
+// Rute API untuk preview template gauge
+$router->get('/api/template/preview/{id}', 'Api\DeviceApiController@getTemplatePreview');

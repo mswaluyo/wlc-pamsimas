@@ -7,25 +7,10 @@
     </div>
     <nav class="sidebar-nav">
         <ul>
-            <li class="nav-header">MENU UTAMA</li>
             <li class="nav-item">
                 <a href="<?= base_url('/') ?>">
                     <i class="fas fa-tachometer-alt nav-icon"></i>
                     <span>Dashboard</span>
-                </a>
-            </li>
-
-            <li class="nav-header">ANALISIS & LOG</li>
-            <li class="nav-item"> 
-                <a href="<?= base_url('/logs/sensors') ?>" class="<?= isActive('/logs/sensors') ?>">
-                    <i class="fas fa-chart-line nav-icon"></i>
-                    <span>Log Sensor</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a href="<?= base_url('/logs/pumps') ?>" class="<?= isActive('/logs/pumps') ?>">
-                    <i class="fas fa-history nav-icon"></i>
-                    <span>Riwayat Pompa</span>
                 </a>
             </li>
 
@@ -38,25 +23,25 @@
             </li>
             <li class="nav-item">
                 <a href="<?= base_url('/controllers') ?>">
-                    <i class="fas fa-cogs nav-icon"></i>
-                    <span>Pengaturan Perangkat</span>
+                    <i class="fas fa-microchip nav-icon"></i>
+                    <span>Perangkat</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a href="<?= base_url('/settings/tanks') ?>">
-                    <i class="fas fa-database nav-icon"></i>
+                    <i class="fa-solid fa-glass-water nav-icon"></i>
                     <span>Data Tangki</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a href="<?= base_url('/settings/pumps') ?>">
-                    <i class="fas fa-water nav-icon"></i>
+                    <i class="fas fa-fan nav-icon"></i>
                     <span>Data Pompa</span>
                 </a>
             </li>
             <li class="nav-item">
                 <a href="<?= base_url('/settings/sensors') ?>">
-                    <i class="fas fa-microchip nav-icon"></i>
+                    <i class="fas fa-satellite-dish nav-icon"></i>
                     <span>Data Sensor</span>
                 </a>
             </li>
@@ -68,7 +53,6 @@
             </li>
 
             <?php if (isset($_SESSION['user']) && $_SESSION['user']['role'] === 'Administrator'): ?>
-            <li class="nav-header">ADMINISTRASI</li>
             <li class="nav-item">
                 <a href="<?= base_url('/users') ?>">
                     <i class="fas fa-users-cog nav-icon"></i>
@@ -97,8 +81,7 @@
                 </a>
             </li>
 
-            <li class="nav-header">AKUN</li>
-            <li class="nav-item">
+            <li class="nav-item" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
                 <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                     <i class="fas fa-sign-out-alt nav-icon"></i>
                     <span>Logout</span>

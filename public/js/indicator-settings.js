@@ -1,48 +1,41 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // Temukan form utama di halaman
-    const settingsForm = document.getElementById('indicator-settings-form');
-    if (!settingsForm) return;
-
-    // Temukan input tersembunyi yang menyimpan ID template aktif
-    const activeTemplateInput = document.getElementById('active_template_id');
-
-    // Tambahkan event listener ke semua tombol 'Aktifkan'
-    document.querySelectorAll('.activate-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            const templateId = this.getAttribute('data-template-id');
-            
-            // 1. Perbarui nilai input tersembunyi dengan ID template yang baru
-            activeTemplateInput.value = templateId;
-            // 2. Kirim form untuk menyimpan semua pengaturan (termasuk template aktif yang baru)
-            settingsForm.submit();
-        });
+    // Handle iframe loading state (Menghilangkan spinner saat iframe selesai dimuat)
+    const iframes = document.querySelectorAll('.template-preview iframe');
+    iframes.forEach(iframe => {
+        iframe.onload = function() {
+            const loader = this.parentElement.querySelector('.preview-loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 300);
+            }
+        };
     });
 
-    // --- Logika Preview Template ---
-    const previewModal = document.getElementById('previewModal');
-    const closePreviewBtn = document.getElementById('closePreviewModal');
-    const previewFrame = document.getElementById('previewFrame');
-
-    if (previewModal && closePreviewBtn && previewFrame) {
-        document.querySelectorAll('.preview-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const templateId = this.getAttribute('data-template-id');
-                // Menggunakan BASE_URL global yang didefinisikan di main.php
-                previewFrame.src = `${BASE_URL}api/template-preview/${templateId}`;
-                previewModal.style.display = 'flex';
+    // Handle template selection visual feedback (Efek klik pada kartu template)
+    const radioInputs = document.querySelectorAll('input[name="active_template_id"]');
+    radioInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            // Hapus kelas aktif dari semua kartu
+            document.querySelectorAll('.template-card').forEach(card => {
+                card.classList.remove('active-template');
+                const badge = card.querySelector('.status-badge');
+                if(badge) badge.remove();
             });
-        });
-
-        closePreviewBtn.addEventListener('click', function() {
-            previewModal.style.display = 'none';
-            previewFrame.src = 'about:blank'; // Reset iframe
-        });
-
-        window.addEventListener('click', function(event) {
-            if (event.target === previewModal) {
-                previewModal.style.display = 'none';
-                previewFrame.src = 'about:blank';
+            
+            // Tambahkan kelas aktif ke kartu yang dipilih
+            const selectedCard = this.closest('.template-card');
+            selectedCard.classList.add('active-template');
+            
+            // Tambahkan badge 'Aktif' secara dinamis
+            const header = selectedCard.querySelector('.template-header');
+            if (header && !header.querySelector('.status-badge')) {
+                const badge = document.createElement('span');
+                badge.className = 'status-badge status-online';
+                badge.innerHTML = '<i class="fas fa-check"></i> Aktif';
+                header.appendChild(badge);
             }
         });
-    }
+    });
 });

@@ -3,7 +3,7 @@
 
     <!-- Kartu Statistik -->
     <div class="stat-cards-container">
-        <div class="stat-card">
+        <a href="<?= base_url('/controllers') ?>" class="stat-card">
             <div class="stat-card-icon bg-blue">
                 <i class="fas fa-microchip"></i>
             </div>
@@ -11,8 +11,8 @@
                 <div class="stat-card-title">Total Perangkat</div>
                 <div class="stat-card-value" id="stat-total-controllers"><?php echo $stats['total_controllers'] ?? 0; ?></div>
             </div>
-        </div>
-        <div class="stat-card">
+        </a>
+        <a href="<?= base_url('/controllers?status=online') ?>" class="stat-card">
             <div class="stat-card-icon bg-green">
                 <i class="fas fa-wifi"></i>
             </div>
@@ -20,8 +20,8 @@
                 <div class="stat-card-title">Perangkat Online</div>
                 <div class="stat-card-value" id="stat-online-controllers"><?php echo $stats['online_controllers'] ?? 0; ?></div>
             </div>
-        </div>
-        <div class="stat-card">
+        </a>
+        <a href="<?= base_url('/settings/tanks') ?>" class="stat-card">
             <div class="stat-card-icon bg-orange">
                 <i class="fas fa-database"></i>
             </div>
@@ -29,8 +29,8 @@
                 <div class="stat-card-title">Total Tangki</div>
                 <div class="stat-card-value" id="stat-total-tanks"><?php echo $stats['total_tanks'] ?? 0; ?></div>
             </div>
-        </div>
-        <div class="stat-card">
+        </a>
+        <a href="<?= base_url('/users') ?>" class="stat-card">
             <div class="stat-card-icon bg-red">
                 <i class="fas fa-users"></i>
             </div>
@@ -38,7 +38,7 @@
                 <div class="stat-card-title">Total Pengguna</div>
                 <div class="stat-card-value" id="stat-total-users"><?php echo $stats['total_users'] ?? 0; ?></div>
             </div>
-        </div>
+        </a>
     </div>
 
     <!-- Gauge Level Air -->
@@ -187,6 +187,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         // Pastikan gaugeCard ada sebelum melanjutkan
                         if (!gaugeCard) return;
 
+                        // Tambahkan link detail ke dataset kartu agar bisa diklik
+                        gaugeCard.dataset.detailUrl = `${BASE_URL}controllers/${controller.id}`;
+                        gaugeCard.style.cursor = 'pointer';
+
                         // --- LOGIKA BARU: Update atau buat indikator sinyal ---
                         let signalIndicator = gaugeCard.querySelector('.signal-indicator');
                         if (!signalIndicator) {
@@ -196,32 +200,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
 
                         const rssi = controller.rssi;
-                        let signalClass = '';
-                        let activeBars = 0; // Jumlah bar yang aktif
+                        const isOnline = controller.is_online; // Menggunakan flag dari API
+                        let signalColor = '#bdc3c7'; // Default abu-abu (Offline/No Signal)
+                        let signalTitle = 'Offline / Tidak ada sinyal';
 
-                        if (rssi && rssi != 0) {
+                        if (isOnline && rssi && rssi != 0) {
                             if (rssi > -67) {
-                                signalClass = 'signal-good'; // Kuat (hijau)
-                                activeBars = 4;
+                                signalColor = '#27ae60'; // Hijau (Kuat)
+                                signalTitle = `Sinyal Kuat (${rssi} dBm)`;
                             } else if (rssi > -80) {
-                                signalClass = 'signal-medium'; // Sedang (oranye)
-                                activeBars = 3;
+                                signalColor = '#f39c12'; // Kuning/Oranye (Sedang)
+                                signalTitle = `Sinyal Sedang (${rssi} dBm)`;
                             } else {
-                                signalClass = 'signal-weak'; // Lemah (merah)
-                                activeBars = 2;
+                                signalColor = '#e74c3c'; // Merah (Lemah)
+                                signalTitle = `Sinyal Lemah (${rssi} dBm)`;
                             }
                         }
 
-                        // Hapus kelas lama dan tambahkan yang baru
-                        signalIndicator.classList.remove('signal-good', 'signal-medium', 'signal-weak');
-                        if (signalClass) signalIndicator.classList.add(signalClass);
-                        
-                        // Buat HTML untuk bar sinyal
+                        // Gunakan ikon fa-wifi dengan warna dinamis
                         signalIndicator.innerHTML = `
-                            <span class="signal-bar ${activeBars >= 1 ? 'active' : ''}"></span>
-                            <span class="signal-bar ${activeBars >= 2 ? 'active' : ''}"></span>
-                            <span class="signal-bar ${activeBars >= 3 ? 'active' : ''}"></span>
-                            <span class="signal-bar ${activeBars >= 4 ? 'active' : ''}"></span>
+                            <i class="fas fa-wifi" style="color: ${signalColor}; font-size: 1.2em;" title="${signalTitle}"></i>
                         `;
 
                         // --- LOGIKA BARU: Update atau buat indikator status pompa ---
@@ -260,7 +258,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         // --- LOGIKA JAVASCRIPT UNIVERSAL ---
                         const waterLevel = controller.latest_water_level || 0;
                         let fillColor;
-                        if (parseFloat(waterLevel) > parseFloat(settings.threshold_medium)) {
+
+                        if (!isOnline) {
+                            fillColor = '#95a5a6'; // Abu-abu jika offline
+                        } else if (parseFloat(waterLevel) > parseFloat(settings.threshold_medium)) {
                             fillColor = settings.color_high;
                         } else if (parseFloat(waterLevel) > parseFloat(settings.threshold_low)) {
                             fillColor = settings.color_medium;
@@ -287,8 +288,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                         el.style.setProperty('--percentage', `${finalValue}deg`);
                                         el.style.setProperty('--fill-color', fillColor);
                                     } else if (styleProp === 'percentage') {
-                                        el.style.width = `${waterLevel}%`;
-                                        el.style.height = `${waterLevel}%`;
+                                        // PERBAIKAN: Cek juga parent container untuk memastikan ini adalah gauge vertikal
+                                        if (el.classList.contains('tank-gauge-water') || el.closest('.tank-gauge-container')) {
+                                            el.style.height = `${waterLevel}%`;
+                                            el.style.width = '100%'; // Pastikan lebar tetap penuh untuk tangki vertikal
+                                        } else if (el.classList.contains('simple-bar-gauge-fill') || el.closest('.simple-bar-gauge-container')) {
+                                            el.style.width = `${waterLevel}%`;
+                                            el.style.height = '100%'; // Pastikan tinggi tetap penuh untuk bar horizontal
+                                        } else {
+                                            el.style.width = `${waterLevel}%`;
+                                            el.style.height = `${waterLevel}%`;
+                                        }
                                         el.style.backgroundColor = fillColor;
                                     }
                                 });
@@ -296,7 +306,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // PERBAIKAN: Tambahkan kembali logika untuk update teks
                                 const textElement = gaugeCard.querySelector('.value') || gaugeCard.querySelector('.tank-gauge-text') || gaugeCard.querySelector('.simple-bar-gauge-text');
                                 if (textElement) {
-                                    textElement.textContent = `${Math.round(waterLevel)}%`;
+                                    if (!isOnline) {
+                                        textElement.textContent = 'OFFLINE';
+                                        textElement.style.fontSize = '1.2em'; // Perkecil font agar teks OFFLINE muat
+                                    } else {
+                                        textElement.textContent = `${Math.round(waterLevel)}%`;
+                                        textElement.style.fontSize = ''; // Reset ke ukuran default CSS
+                                    }
                                 }
                             }
                         }
@@ -380,21 +396,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Gunakan event delegation pada kontainer utama
     gaugeContainer.addEventListener('click', function(event) {
-        // Gunakan closest agar klik pada ikon di dalam tombol tetap terdeteksi sebagai klik tombol
-        const target = event.target.closest('.btn-action');
-        if (!target) return;
+        // 1. Cek apakah yang diklik adalah tombol aksi (Mode/Power)
+        const btnTarget = event.target.closest('.btn-action');
+        if (btnTarget) {
+            if (btnTarget.classList.contains('btn-mode-toggle')) {
+                const mac = btnTarget.dataset.mac;
+                const newMode = btnTarget.dataset.newMode;
+                
+                showConfirmation(`Anda yakin ingin mengubah mode perangkat ${mac} menjadi ${newMode}?`, function() {
+                    sendApiCommand(mac, 'set_mode', newMode, btnTarget);
+                });
+            } else if (btnTarget.classList.contains('btn-pump-toggle') && !btnTarget.disabled) { 
+                const mac = btnTarget.dataset.mac;
+                const newStatus = btnTarget.dataset.newStatus;
+                sendApiCommand(mac, 'set_status', newStatus, btnTarget);
+            }
+            return; // Hentikan eksekusi agar tidak memicu klik kartu
+        }
 
-        if (target.classList.contains('btn-mode-toggle')) {
-            const mac = target.dataset.mac;
-            const newMode = target.dataset.newMode;
-            
-            showConfirmation(`Anda yakin ingin mengubah mode perangkat ${mac} menjadi ${newMode}?`, function() {
-                sendApiCommand(mac, 'set_mode', newMode, target);
-            });
-        } else if (target.classList.contains('btn-pump-toggle') && !target.disabled) { // Hanya jalankan jika tombol tidak di-disable
-            const mac = target.dataset.mac;
-            const newStatus = target.dataset.newStatus;
-            sendApiCommand(mac, 'set_status', newStatus, target);
+        // 2. Cek apakah yang diklik adalah kartu gauge (untuk navigasi ke detail)
+        const cardTarget = event.target.closest('.gauge-card');
+        if (cardTarget && cardTarget.dataset.detailUrl) {
+            window.location.href = cardTarget.dataset.detailUrl;
         }
     });
     

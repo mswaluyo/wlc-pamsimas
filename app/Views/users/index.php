@@ -2,17 +2,11 @@
     <h1><?php echo $title ?? 'Manajemen Pengguna'; ?></h1>
     <p>Kelola pengguna yang dapat mengakses sistem. Hanya Administrator yang dapat menambah atau mengubah data pengguna.</p>
 
-    <div style="margin-bottom: 20px;">
-        <a href="<?= base_url('/users/create') ?>" class="btn btn-success">
-            <i class="fas fa-plus-circle"></i> Tambah Pengguna Baru
-        </a>
-    </div>
-
     <div>
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th class="col-number">No</th>
                     <th>Nama Lengkap</th>
                     <th>Username (Email)</th>
                     <th>Peran</th>
@@ -21,10 +15,11 @@
                 </tr>
             </thead>
             <tbody>
+                <?php $no = 1; ?>
                 <?php if (!empty($users)): ?>
                     <?php foreach ($users as $user): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($user['id']); ?></td>
+                            <td class="col-number"><?= $no++ ?></td>
                             <td><?php echo htmlspecialchars($user['full_name']); ?></td>
                             <td><?php echo htmlspecialchars($user['username']); ?></td>
                             <td><?php echo htmlspecialchars($user['role']); ?></td>
@@ -43,5 +38,11 @@
                 <?php endif; ?>
             </tbody>
         </table>
+    </div>
+
+    <div class="table-footer-actions">
+        <a href="<?= base_url('/users/create') ?>" class="btn btn-success">
+            <i class="fas fa-plus-circle"></i> Tambah Pengguna Baru
+        </a>
     </div>
 </div>

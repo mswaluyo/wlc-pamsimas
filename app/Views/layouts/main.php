@@ -7,7 +7,7 @@
     <!-- Favicon -->
     <link rel="icon" href="<?= base_url('/img/logo.png') ?>" type="image/png">
     <!-- Memuat CSS dengan parameter versi untuk cache busting -->
-    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=1.1') ?>">
+    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=1.3') ?>">
     
     <!-- Slot untuk memuat file CSS spesifik halaman -->
     <?php if (isset($page_styles) && is_array($page_styles)): ?>
@@ -17,10 +17,14 @@
     <?php endif; ?>
 
     <!-- Menambahkan library Font Awesome untuk ikon -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <script>
         // Variabel global untuk memudahkan AJAX di JavaScript
-        const BASE_URL = "<?= base_url('/') ?>";
+        let BASE_URL = "<?= base_url('/') ?>";
+        // Fix Mixed Content: Jika browser di HTTPS tapi BASE_URL HTTP, upgrade ke HTTPS
+        if (window.location.protocol === 'https:' && BASE_URL.startsWith('http:')) {
+            BASE_URL = BASE_URL.replace('http:', 'https:');
+        }
     </script>
 </head>
 <body>

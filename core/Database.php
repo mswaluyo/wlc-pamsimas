@@ -6,10 +6,26 @@ class Database {
     private $pdo;
 
     private function __construct() {
-        $dbHost = getenv('DB_HOST') ?: 'localhost';
-        $dbName = getenv('DB_NAME') ?: 'wlc_db';
-        $dbUser = getenv('DB_USER') ?: 'root';
-        $dbPass = getenv('DB_PASS') ?: '';
+        // 1. Muat konfigurasi dari file .env
+        $this->loadEnv();
+
+        $dbHost = getenv('DB_HOST');
+        $dbName = getenv('DB_NAME') ?: getenv('DB_DATABASE');
+        $dbUser = getenv('DB_USER') ?: getenv('DB_USERNAME');
+        $dbPass = getenv('DB_PASS') ?: getenv('DB_PASSWORD');
+
+        // Validasi untuk memastikan variabel .env dimuat.
+        if (empty($dbHost) || empty($dbName) || empty($dbUser)) {
+            // Hentikan output apa pun yang mungkin sudah ada di buffer
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            http_response_code(503);
+            header('Content-Type: application/json');
+            // Beri pesan yang lebih jelas
+            echo json_encode(['status' => 'error', 'message' => 'Konfigurasi database (.env) tidak ditemukan atau tidak lengkap. Pastikan DB_HOST, DB_NAME (atau DB_DATABASE), dan DB_USER (atau DB_USERNAME) sudah diisi.']);
+            exit();
+        }
 
         $dsn = 'mysql:host=' . $dbHost . ';dbname=' . $dbName . ';charset=utf8mb4';
         $options = [
@@ -29,8 +45,41 @@ class Database {
             // Alih-alih membuat crash, kirim respons error 503 Service Unavailable.
             http_response_code(503);
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Layanan database tidak tersedia.']);
+            echo json_encode(['status' => 'error', 'message' => 'Database Error: ' . $e->getMessage()]);
             exit(); // Hentikan eksekusi skrip dengan anggun.
+        }
+    }
+
+    /**
+     * Fungsi manual untuk memuat file .env tanpa library tambahan
+     */
+    private function loadEnv() {
+        // Asumsi file Database.php ada di folder /core, maka .env ada di folder root (naik satu level)
+        $path = __DIR__ . '/../.env';
+
+        if (!file_exists($path)) {
+            return; // Jika tidak ada .env, gunakan default
+        }
+
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            // Lewati komentar
+            if (strpos(trim($line), '#') === 0) {
+                continue;
+            }
+
+            if (strpos($line, '=') !== false) {
+                list($name, $value) = explode('=', $line, 2);
+                $name = trim($name);
+                $value = trim($value);
+
+                // Set environment variable jika belum ada
+                if (!array_key_exists($name, $_SERVER) && !array_key_exists($name, $_ENV)) {
+                    putenv(sprintf('%s=%s', $name, $value));
+                    $_ENV[$name] = $value;
+                    $_SERVER[$name] = $value;
+                }
+            }
         }
     }
 

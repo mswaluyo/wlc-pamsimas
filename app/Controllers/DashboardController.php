@@ -29,8 +29,8 @@ class DashboardController {
         $totalControllers = count($controllers);
         $onlineControllers = 0;
         foreach ($controllers as $controller) {
-            // Anggap online jika update dalam 5 menit terakhir (300 detik)
-            if (strtotime($controller['last_update']) > (time() - 300)) {
+            // Anggap online jika update dalam 1 menit terakhir (60 detik)
+            if (strtotime($controller['last_update']) > (time() - 60)) {
                 $onlineControllers++;
             }
         }
@@ -86,6 +86,9 @@ class DashboardController {
 
                 // Hanya proses jika ada konten HTML
                 if (!empty($html_content)) {
+                    // Pastikan HTML didecode jika tersimpan sebagai entitas di database
+                    $html_content = html_entity_decode($html_content);
+
                     // Ekstrak hanya konten di dalam <body> untuk menghindari konflik
                     $doc = new \DOMDocument();
                     @$doc->loadHTML('<?xml encoding="utf-8" ?>' . $html_content); // Tambahkan header untuk encoding

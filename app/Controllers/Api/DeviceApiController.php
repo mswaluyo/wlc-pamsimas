@@ -68,7 +68,7 @@ class DeviceApiController {
 
         try {
             // --- LOGIKA BARU: Cek durasi offline sebelum update ---
-            $offlineThreshold = 300; // 5 menit dalam detik
+            $offlineThreshold = 60; // Ubah ke 1 menit (60 detik) agar lebih responsif
             $lastSeenTimestamp = strtotime($controller['last_update']);
             $currentTime = time();
     
@@ -129,6 +129,9 @@ class DeviceApiController {
             echo json_encode(['status' => 'unregistered']);
             return;
         }
+
+        // Bersihkan buffer output untuk mencegah karakter tambahan merusak JSON
+        if (ob_get_level()) ob_clean();
 
         header('Content-Type: application/json');
 
@@ -249,16 +252,25 @@ class DeviceApiController {
 
         $json_data = file_get_contents('php://input');
         $data = json_decode($json_data, true);
+        
+        // Validasi JSON
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid JSON: ' . json_last_error_msg()]);
+            return;
+        }
 
         $mac_address = $data['mac_address'] ?? null;
         if (!$mac_address) {
             http_response_code(400);
+            echo json_encode(['error' => 'Missing MAC address']);
             return;
         }
 
         $controller = Controller::findByMac($mac_address);
         if (!$controller) {
             http_response_code(404);
+            echo json_encode(['error' => 'Device not found']);
             return;
         }
 
@@ -349,11 +361,18 @@ class DeviceApiController {
 
         $totalControllers = count($controllers);
         $onlineControllers = 0;
-        foreach ($controllers as $controller) {
-            if (strtotime($controller['last_update']) > (time() - 300)) {
+        
+        // Gunakan referensi (&) agar kita bisa menambahkan flag is_online ke array asli
+        foreach ($controllers as &$controller) {
+            // Ubah batas waktu online menjadi 60 detik (1 menit)
+            $isOnline = (strtotime($controller['last_update']) > (time() - 60));
+            $controller['is_online'] = $isOnline; // Kirim status ini ke frontend
+            
+            if ($isOnline) {
                 $onlineControllers++;
             }
         }
+        unset($controller); // Hapus referensi
 
         $data = [
             'stats' => [
@@ -387,6 +406,9 @@ class DeviceApiController {
 
         $clean_html = '';
         if (!empty($html_content)) {
+            // Pastikan HTML didecode jika tersimpan sebagai entitas di database
+            $html_content = html_entity_decode($html_content);
+
             // Ekstrak hanya konten di dalam <body> untuk menghindari konflik
             $doc = new \DOMDocument();
             @$doc->loadHTML('<?xml encoding="utf-8" ?>' . $html_content);
@@ -412,6 +434,7 @@ class DeviceApiController {
         );
         
         // Gabungkan menjadi satu dokumen HTML lengkap untuk ditampilkan di iframe
+        header('Content-Type: text/html; charset=utf-8');
         echo "<!DOCTYPE html><html><head><style>{$css_content}</style></head><body>{$final_html}<script src=\"https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js\"></script><script src=\"https://cdn3.devexpress.com/jslib/17.1.6/js/dx.all.js\"></script><script>{$js_content}</script></body></html>";
     }
 }

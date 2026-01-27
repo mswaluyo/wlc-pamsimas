@@ -6,7 +6,7 @@
 
     <?php if ($controller): ?>
         <?php
-            $isOnline = (time() - strtotime($controller['last_update'])) < 300;
+            $isOnline = (time() - strtotime($controller['last_update'])) < 60;
             $waterLevel = $controller['latest_water_level'] ?? 0;
             
             // Ambil pengaturan warna dari database
@@ -181,8 +181,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     el.style.setProperty('--percentage', `${finalValue}deg`);
                     el.style.setProperty('--fill-color', fillColor);
                 } else if (styleProp === 'percentage') {
-                    el.style.width = `${waterLevel}%`;
-                    el.style.height = `${waterLevel}%`;
+                    // PERBAIKAN: Cek juga parent container untuk memastikan ini adalah gauge vertikal
+                    if (el.classList.contains('tank-gauge-water') || el.closest('.tank-gauge-container')) {
+                        el.style.height = `${waterLevel}%`;
+                        el.style.width = '100%';
+                    } else if (el.classList.contains('simple-bar-gauge-fill') || el.closest('.simple-bar-gauge-container')) {
+                        el.style.width = `${waterLevel}%`;
+                        el.style.height = '100%';
+                    } else {
+                        el.style.width = `${waterLevel}%`;
+                        el.style.height = `${waterLevel}%`;
+                    }
                     el.style.backgroundColor = fillColor;
                 }
             });

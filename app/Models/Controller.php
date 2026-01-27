@@ -110,8 +110,7 @@ class Controller {
                 c.trigger_percentage,
                 c.on_duration,
                 c.off_duration,
-                c.restart_command,
-                c.config_version
+                c.restart_command
             FROM controllers c
             WHERE c.mac_address = :mac_address";
         $stmt = $pdo->prepare($sql);

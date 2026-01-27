@@ -23,9 +23,19 @@ class ControllerController {
      */
     public function index() {
 
+        $controllers = Controller::getAll();
+
+        // Logika Filter: Jika ada parameter ?status=online di URL
+        if (isset($_GET['status']) && $_GET['status'] === 'online') {
+            $controllers = array_filter($controllers, function($device) {
+                // Anggap online jika update terakhir kurang dari 1 menit (60 detik) yang lalu
+                return strtotime($device['last_update']) > (time() - 60);
+            });
+        }
+
         $data = [
-            'title'       => 'Pengaturan Perangkat',
-            'controllers' => Controller::getAll(),
+            'title'       => isset($_GET['status']) && $_GET['status'] === 'online' ? 'Perangkat Online' : 'Pengaturan Perangkat',
+            'controllers' => $controllers,
             // Data tambahan untuk form modal
             'tanks'       => Tank::getAll(),
             'pumps'       => Pump::getAll(),
@@ -64,6 +74,9 @@ class ControllerController {
                 $clean_html = '';
 
                 if (!empty($html_content)) {
+                    // Pastikan HTML didecode jika tersimpan sebagai entitas di database
+                    $html_content = html_entity_decode($html_content);
+
                     $doc = new \DOMDocument();
                     @$doc->loadHTML('<?xml encoding="utf-8" ?>' . $html_content);
                     $body = $doc->getElementsByTagName('body')->item(0);
@@ -221,7 +234,7 @@ class ControllerController {
      */
     private function getUnregisteredActiveDevices(): array {
         $filePath = ROOT_PATH . '/storage/detected_macs.json';
-        $activePeriod = 300; // Anggap aktif jika terlihat dalam 5 menit (300 detik)
+        $activePeriod = 60; // Ubah ke 60 detik agar deteksi lebih real-time
 
         // 1. Baca dari file sementara
         $detectedDevices = [];

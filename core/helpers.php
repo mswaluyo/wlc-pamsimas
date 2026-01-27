@@ -45,5 +45,16 @@ function isActive(string $path, bool $exactMatch = true): string {
  * @return string URL lengkap (misal: 'http://localhost/wlc/public/dashboard').
  */
 function base_url($path = '') {
-    return rtrim(BASE_URL, '/') . '/' . ltrim($path, '/');
+    $url = defined('BASE_URL') ? BASE_URL : '';
+
+    // Deteksi otomatis jika berjalan di HTTPS (termasuk Cloudflare/Proxy)
+    $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') 
+            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
+            || (isset($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] === 'https');
+
+    if ($isHttps && strpos($url, 'http://') === 0) {
+        $url = str_replace('http://', 'https://', $url);
+    }
+
+    return rtrim($url, '/') . '/' . ltrim($path, '/');
 }

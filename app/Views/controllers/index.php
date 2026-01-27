@@ -14,19 +14,11 @@
         </div>
     <?php endif; ?>
 
-    <div style="margin-bottom: 20px;">
-        <a href="<?= base_url('/controllers/register') ?>" class="btn btn-success">
-            <i class="fas fa-plus-circle"></i> Daftarkan Perangkat Baru
-        </a>
-        <a href="<?= base_url('/detect') ?>" class="btn btn-info" style="margin-left: 10px;">
-            <i class="fas fa-search"></i> Deteksi Otomatis
-        </a>
-    </div>
-
     <!-- Tabel Daftar Perangkat -->
     <table class="data-table">
         <thead>
             <tr>
+                <th class="col-number">No</th>
                 <th>Nama Tangki / MAC</th>
                 <th>Status</th>
                 <th>Mode</th>
@@ -36,16 +28,18 @@
             </tr>
         </thead>
         <tbody>
+            <?php $no = 1; ?>
             <?php if (!empty($controllers)): ?>
                 <?php foreach ($controllers as $controller): ?>
                     <tr>
+                        <td class="col-number"><?= $no++ ?></td>
                         <td>
                             <strong><?php echo htmlspecialchars($controller['tank_name'] ?? 'Tanpa Nama'); ?></strong><br>
                             <small style="color: #666;"><?php echo htmlspecialchars($controller['mac_address']); ?></small>
                         </td>
                         <td>
                             <?php 
-                                $isOnline = (strtotime($controller['last_update']) > (time() - 300));
+                                $isOnline = (strtotime($controller['last_update']) > (time() - 60));
                                 if ($isOnline) {
                                     echo '<span class="status-badge status-online">Online</span>';
                                 } else {
@@ -54,7 +48,7 @@
                             ?>
                         </td>
                         <td><?php echo htmlspecialchars($controller['control_mode']); ?></td>
-                        <td><?php echo htmlspecialchars($controller['latest_water_level'] ?? 0); ?>%</td>
+                        <td><?php echo round($controller['latest_water_level'] ?? 0); ?>%</td>
                         <td><?php echo htmlspecialchars($controller['last_update']); ?></td>
                         <td class="action-buttons">
                             <!-- Tombol Detail -->
@@ -85,9 +79,19 @@
                 <?php endforeach; ?>
             <?php else: ?>
                 <tr>
-                    <td colspan="6" style="text-align: center;">Belum ada perangkat yang didaftarkan.</td>
+                    <td colspan="7" style="text-align: center;">Belum ada perangkat yang didaftarkan.</td>
                 </tr>
             <?php endif; ?>
         </tbody>
     </table>
+
+    <!-- Tombol Aksi di Bawah Tabel -->
+    <div class="table-footer-actions">
+        <a href="<?= base_url('/detect') ?>" class="btn btn-info" style="margin-right: 10px;">
+            <i class="fas fa-search"></i> Deteksi Otomatis
+        </a>
+        <a href="<?= base_url('/controllers/register') ?>" class="btn btn-success">
+            <i class="fas fa-plus-circle"></i> Daftarkan Perangkat Baru
+        </a>
+    </div>
 </div>
