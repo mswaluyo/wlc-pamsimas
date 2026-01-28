@@ -10,10 +10,14 @@
  */
 function view($viewPath, $data = [], $useLayout = true) {
     // PERBAIKAN: Variabel ini harus bernama $content agar bisa dibaca oleh main.php
-    $content = ROOT_PATH . '/app/Views/' . str_replace('.', '/', $viewPath) . '.php';
+    // Kita gunakan nama variabel sementara untuk path file agar tidak tertimpa oleh extract($data)
+    $__view_file_path = ROOT_PATH . '/app/Views/' . str_replace('.', '/', $viewPath) . '.php';
 
-    if (file_exists($content)) {
+    if (file_exists($__view_file_path)) {
         extract($data);
+
+        // Tetapkan $content ke path file yang benar setelah extract
+        $content = $__view_file_path;
 
         if ($useLayout) {
             require_once ROOT_PATH . '/app/Views/layouts/main.php';
@@ -22,7 +26,7 @@ function view($viewPath, $data = [], $useLayout = true) {
         }
     } else {
         // Handle error: view file not found
-        echo "Error: View file '{$content}' not found.";
+        echo "Error: View file '{$__view_file_path}' not found.";
     }
 }
 

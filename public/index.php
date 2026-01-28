@@ -2,7 +2,11 @@
 // Front-Controller: Titik masuk tunggal untuk semua request.
 
 // Mulai atau lanjutkan session di setiap request
-session_start();
+// Konfigurasi session agar login bertahan selama 30 hari (2592000 detik)
+session_start([
+    'cookie_lifetime' => 2592000,
+    'gc_maxlifetime' => 2592000,
+]);
 
 // PERBAIKAN: Atur zona waktu secara global di titik masuk aplikasi.
 date_default_timezone_set('Asia/Jakarta');

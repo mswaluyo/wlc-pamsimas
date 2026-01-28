@@ -1,0 +1,78 @@
+/* Responsif untuk Mobile (Max width 768px) */
+@media (max-width: 768px) {
+    /* Sidebar menjadi ikon saja (Collapsed) */
+    /* PERBAIKAN: Gunakan posisi off-screen (-60px) bukan display:none agar sidebar tetap dirender dan transisi berjalan */
+    .sidebar { display: flex; position: fixed; top: 0; left: -60px; height: 100vh; width: 60px; z-index: 9999; box-shadow: 2px 0 5px rgba(0,0,0,0.5); transition: left 0.3s ease; }
+    .sidebar.show { left: 0; }
+    .sidebar ul li a { font-size: 0; justify-content: center; padding: 15px 0; }
+    .sidebar ul li a i, .sidebar ul li a .nav-icon { font-size: 1.4rem; margin: 0; }
+    .sidebar-header, .nav-header { display: none; }
+    
+    /* Overlay saat sidebar muncul */
+    .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9998; }
+    .sidebar-overlay.show { display: block; }
+    
+    /* Penyesuaian Konten Utama */
+    .content { margin-top: 40px; padding: 10px; }
+    
+    /* Tombol Hamburger */
+    #mobile-menu-toggle { display: block; transition: left 0.3s ease; }
+    #mobile-menu-toggle.shifted { display: none; }
+    
+    /* Sembunyikan elemen yang tidak perlu di mobile */
+    .stat-card-title, .content-header, .page-header, h1 { display: none; }
+    h2 { font-size: 1.2rem; padding-bottom: 5px; margin-bottom: 10px; border: none; }
+    
+    /* Kompaksi Kartu & Tabel */
+    .card { padding: 12px; margin-bottom: 10px; }
+    .gauge-container { gap: 10px; }
+    table { font-size: 12px; }
+    th, td { padding: 6px 8px; }
+    
+    /* Grid Dashboard Mobile */
+    .stat-cards-container { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .stat-card { padding: 10px; position: relative; justify-content: center; overflow: visible; }
+    .stat-card-icon { width: 40px; height: 40px; font-size: 18px; margin: 0; }
+    .stat-card-value { position: absolute; top: -5px; right: -5px; background: #e74c3c; color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; min-width: 16px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+    /* Floating Action Button (FAB) untuk Tambah Perangkat */
+    .mobile-fab-btn {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 55px;
+        height: 55px;
+        border-radius: 50%;
+        background-color: #27ae60;
+        color: white !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        z-index: 9990;
+        font-size: 24px;
+        text-decoration: none;
+        transition: transform 0.2s;
+    }
+    .mobile-fab-btn:active {
+        transform: scale(0.90);
+    }
+}
+
+/* Gaya Halaman Login yang Dipercantik */
+body.login-page { background: linear-gradient(135deg, #3498db 0%, #2c3e50 100%); display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+.login-container { background: rgba(255, 255, 255, 0.95); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); padding: 40px 30px; width: 85%; max-width: 380px; }
+.login-container h2 { text-align: center; color: #2c3e50; margin-bottom: 25px; font-size: 1.5rem; border: none; }
+.login-container .form-group { margin-bottom: 20px; }
+.login-container label { display: none; } /* Placeholder style */
+.login-container input { width: 100%; padding: 12px 15px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; font-size: 1rem; box-sizing: border-box; }
+.login-container input:focus { border-color: #3498db; background: #fff; box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2); outline: none; }
+.login-container button { width: 100%; padding: 12px; background: #3498db; color: white; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
+
+/* Logo Wrapper */
+.banyutech-logo-wrapper { text-align: center; margin-bottom: 20px; }
+.banyutech-logo-img { width: 80px; height: 80px; margin-bottom: 10px; object-fit: contain; }
+.banyutech-brand { display: block; font-size: 1.5rem; font-weight: 800; color: #2c3e50; letter-spacing: 1px; }
+
+/* Default sembunyikan tombol hamburger di desktop */
+#mobile-menu-toggle { display: none; }

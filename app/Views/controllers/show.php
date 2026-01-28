@@ -87,6 +87,23 @@
             </div>
         </div>
 
+        <!-- Grafik Level Air -->
+        <div class="card" style="margin-bottom: 30px; margin-top: 20px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px;">
+                <h2 style="margin: 0; border: none;">Grafik Level Air</h2>
+                <div class="btn-group">
+                    <button class="btn btn-sm chart-btn btn-primary" data-range="live" onclick="setChartRange('live')">Live</button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="60" onclick="setChartRange(60)">1 Jam</button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="360" onclick="setChartRange(360)">6 Jam</button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="1440" onclick="setChartRange(1440)">24 Jam</button>
+                </div>
+            </div>
+            <div style="height: 300px; position: relative;">
+                <!-- Canvas Grafik dengan ID Controller -->
+                <canvas id="waterLevelChart" data-controller-id="<?= $controller['id'] ?>"></canvas>
+            </div>
+        </div>
+
         <!-- Riwayat Peristiwa -->
         <div class="card" style="margin-top: 20px;">
             <h2 style="text-align: left; font-weight: normal;">Riwayat Peristiwa Terbaru</h2>
@@ -145,6 +162,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 <script src="https://cdn3.devexpress.com/jslib/17.1.6/js/dx.all.js"></script>
 <script src="https://code.jscharting.com/latest/jscharting.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="<?= base_url('/js/chart-control.js') ?>"></script>
 
 <script>
     // Fungsi untuk mengirim perintah ke API

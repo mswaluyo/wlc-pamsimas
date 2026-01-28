@@ -444,4 +444,45 @@ class DeviceApiController {
         header('Content-Type: text/html; charset=utf-8');
         echo "<!DOCTYPE html><html><head><style>{$css_content}</style></head><body>{$final_html}<script src=\"https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js\"></script><script src=\"https://cdn3.devexpress.com/jslib/17.1.6/js/dx.all.js\"></script><script>{$js_content}</script></body></html>";
     }
+
+    /**
+     * Mengambil riwayat data sensor untuk grafik.
+     * Parameter GET: id (controller_id), range (menit)
+     */
+    public function getSensorHistory() {
+        // Izinkan akses jika login sebagai admin (Session) ATAU punya API Key
+        if (!isset($_SESSION['user'])) {
+            $this->validateApiKey();
+        }
+
+        $controller_id = $_GET['id'] ?? null;
+        $range_minutes = $_GET['range'] ?? 60; // Default 1 jam
+
+        if (!$controller_id) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Controller ID required']);
+            return;
+        }
+
+        $pdo = \Database::getInstance()->getConnection();
+        
+        // Ambil data berdasarkan rentang waktu
+        $sql = "SELECT record_time, water_level, water_percentage 
+                FROM sensor_logs 
+                WHERE controller_id = :id 
+                AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) 
+                ORDER BY record_time ASC";
+        
+        // Batasi jumlah titik data jika rentang waktu sangat besar agar browser tidak berat
+        if ($range_minutes > 1440) { // Jika lebih dari 24 jam, ambil sampel (misal: setiap baris ke-n) atau limit
+             $sql .= " LIMIT 2000"; 
+        }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':id' => $controller_id, ':range' => $range_minutes]);
+        $data = $stmt->fetchAll();
+
+        header('Content-Type: application/json');
+        echo json_encode($data);
+    }
 }

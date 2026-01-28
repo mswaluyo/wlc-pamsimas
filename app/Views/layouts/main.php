@@ -7,7 +7,8 @@
     <!-- Favicon -->
     <link rel="icon" href="<?= base_url('/img/logo.png') ?>" type="image/png">
     <!-- Memuat CSS dengan parameter versi untuk cache busting -->
-    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=1.4') ?>">
+    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=' . (file_exists(ROOT_PATH . '/public/css/style.css') ? filemtime(ROOT_PATH . '/public/css/style.css') : '1.0')) ?>">
+    <link rel="stylesheet" href="<?= base_url('/css/responsive.css?v=' . (file_exists(ROOT_PATH . '/public/css/responsive.css') ? filemtime(ROOT_PATH . '/public/css/responsive.css') : '1.0')) ?>">
     
     <!-- Slot untuk memuat file CSS spesifik halaman -->
     <?php if (isset($page_styles) && is_array($page_styles)): ?>
@@ -65,6 +66,9 @@
             <button class="btn btn-primary" onclick="document.getElementById('notificationModal').style.display='none'">Tutup</button>
         </div>
     </div>
+
+    <!-- Script Interaksi Mobile & Responsif -->
+    <script src="<?= base_url('/js/mobile-interact.js?v=' . (file_exists(ROOT_PATH . '/public/js/mobile-interact.js') ? filemtime(ROOT_PATH . '/public/js/mobile-interact.js') : '1.0')) ?>"></script>
 
     <!-- PERBAIKAN: Slot untuk memuat file JavaScript spesifik halaman -->
     <?php if (isset($page_scripts) && is_array($page_scripts)): ?>
