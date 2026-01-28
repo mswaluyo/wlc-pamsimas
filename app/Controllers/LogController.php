@@ -5,6 +5,7 @@ namespace app\Controllers;
 use app\Models\PumpLog;
 use app\Models\SensorLog; // PERBAIKAN: Tambahkan model SensorLog
 use app\Models\AdminLog;
+use app\Models\EventLog; // Tambahkan model EventLog
 
 class LogController {
 
@@ -112,5 +113,38 @@ class LogController {
         ];
 
         view('logs/admin', $data);
+    }
+
+    /**
+     * Menampilkan halaman log kejadian (Power On, Error, dll).
+     */
+    public function eventLogs() {
+        $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+        $limitParam = isset($_GET['limit']) ? $_GET['limit'] : 25;
+
+        if ($limitParam === 'all') {
+            $limit = 1000000;
+        } else {
+            $limit = (int)$limitParam;
+            if ($limit < 1) $limit = 25;
+        }
+        $offset = ($page - 1) * $limit;
+
+        $logs = EventLog::getPaginatedLogs($limit, $offset);
+        $totalLogs = EventLog::countAll();
+
+        $data = [
+            'title' => 'Log Kejadian & Power',
+            'logs' => $logs,
+            'limit' => $limitParam,
+            'pagination' => [
+                'current_page' => $page,
+                'total_pages' => ceil($totalLogs / $limit),
+                'base_url' => base_url('/logs/events'),
+                'limit' => $limitParam
+            ]
+        ];
+
+        view('logs/events', $data);
     }
 }

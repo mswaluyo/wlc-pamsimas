@@ -7,7 +7,7 @@
     <!-- Favicon -->
     <link rel="icon" href="<?= base_url('/img/logo.png') ?>" type="image/png">
     <!-- Memuat CSS dengan parameter versi untuk cache busting -->
-    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=1.3') ?>">
+    <link rel="stylesheet" href="<?= base_url('/css/style.css?v=1.4') ?>">
     
     <!-- Slot untuk memuat file CSS spesifik halaman -->
     <?php if (isset($page_styles) && is_array($page_styles)): ?>

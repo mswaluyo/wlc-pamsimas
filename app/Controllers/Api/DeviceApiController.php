@@ -16,7 +16,7 @@ class DeviceApiController {
     private function validateApiKey() {
         $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? null;
         // Ambil dari .env atau gunakan default yang sama dengan firmware
-        $serverKey = getenv('DEVICE_API_KEY') ?: 'P4mS1m4s-T1rt0-Arg0-2025'; 
+        $serverKey = $_ENV['DEVICE_API_KEY'] ?? $_SERVER['DEVICE_API_KEY'] ?? getenv('DEVICE_API_KEY') ?: 'P4mS1m4s-T1rt0-Arg0-2025'; 
 
         if (!$apiKey || $apiKey !== $serverKey) {
             http_response_code(401); // Unauthorized
@@ -201,28 +201,35 @@ class DeviceApiController {
                 $updateData['firmware_version'] = $value;
                 break;
             case 'report_event':
-                EventLog::create($controller['id'], 'Device Event', 'Laporan dari perangkat: ' . $value);
-
-                // --- LOGIKA BARU: Hitung durasi mati jika event adalah 'boot' ---
-                if ($value === 'boot') {
-                    $powerLossThreshold = 60; // Anggap mati daya jika lebih dari 1 menit
-                    $lastSeenTimestamp = strtotime($controller['last_update']);
-                    $currentTime = time();
-                    $powerOffDuration = $currentTime - $lastSeenTimestamp;
-
-                    if ($powerOffDuration > $powerLossThreshold) {
-                        // Konversi durasi ke format yang mudah dibaca
-                        $hours = floor($powerOffDuration / 3600);
-                        $minutes = floor(($powerOffDuration % 3600) / 60);
-                        $seconds = $powerOffDuration % 60;
-                        $durationString = sprintf('%02d jam, %02d menit, %02d detik', $hours, $minutes, $seconds);
-
-                        // Buat event log spesifik untuk kehilangan daya
-                        EventLog::create($controller['id'], 'Power On', 'Perangkat pulih dari kehilangan daya setelah mati selama ' . $durationString);
-                    }
+                // Hitung durasi offline (baik karena mati listrik maupun hilang sinyal)
+                $powerLossThreshold = 60; // Anggap offline signifikan jika lebih dari 1 menit
+                $lastSeenTimestamp = strtotime($controller['last_update']);
+                $currentTime = time();
+                $offlineDuration = $currentTime - $lastSeenTimestamp;
+                
+                $durationString = '';
+                if ($offlineDuration > $powerLossThreshold) {
+                    $hours = floor($offlineDuration / 3600);
+                    $minutes = floor(($offlineDuration % 3600) / 60);
+                    $seconds = $offlineDuration % 60;
+                    $durationString = sprintf('%02d jam, %02d menit, %02d detik', $hours, $minutes, $seconds);
                 }
-                // --- AKHIR LOGIKA BARU ---
 
+                if ($value === 'boot') {
+                    if ($offlineDuration > $powerLossThreshold) {
+                        EventLog::create($controller['id'], 'Power On', 'Perangkat menyala kembali setelah mati/offline selama ' . $durationString);
+                    } else {
+                        EventLog::create($controller['id'], 'Power On', 'Perangkat menyala kembali (Restart cepat).');
+                    }
+                } elseif ($value === 'network_recovered') {
+                    if ($offlineDuration > $powerLossThreshold) {
+                        EventLog::create($controller['id'], 'Connection Recovered', 'Koneksi internet pulih setelah terputus selama ' . $durationString);
+                    } else {
+                        EventLog::create($controller['id'], 'Connection Recovered', 'Koneksi internet pulih (Gangguan sesaat).');
+                    }
+                } else {
+                    EventLog::create($controller['id'], 'Device Event', 'Laporan: ' . $value);
+                }
                 break;
             case 'reset_restart':
                 $updateData['restart_command'] = 0;

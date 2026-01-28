@@ -78,10 +78,6 @@ $method = $_SERVER['REQUEST_METHOD'];
 $scriptName = dirname($_SERVER['SCRIPT_NAME']);
 $scriptName = str_replace('\\', '/', $scriptName); // Normalisasi slash untuk Windows
 
-// Definisi BASE_URL otomatis untuk memperbaiki link di sidebar
-$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
-$host = $_SERVER['HTTP_HOST'];
-define('BASE_URL', $protocol . '://' . $host . $scriptName);
 
 if (strpos($requestUri, $scriptName) === 0 && $scriptName !== '/') {
     $requestUri = substr($requestUri, strlen($scriptName));

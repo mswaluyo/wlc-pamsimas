@@ -17,6 +17,7 @@ $router->post('/controllers/apply-settings/{id}', 'ControllerController@applySet
 $router->post('/controllers/sync/{id}', 'ControllerController@syncWithMasterData'); // Sinkronisasi data master
 $router->get('/logs/sensors', 'LogController@sensorLogs'); // Log sensor
 $router->get('/logs/pumps', 'LogController@pumpHistory'); // Riwayat pompa
+$router->get('/logs/events', 'LogController@eventLogs'); // Log kejadian/power
 $router->get('/users', 'UserController@index'); // Manajemen pengguna
 $router->get('/users/create', 'UserController@create'); // Form tambah pengguna
 $router->post('/users/create', 'UserController@store'); // Simpan pengguna

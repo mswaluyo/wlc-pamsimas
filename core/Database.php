@@ -9,10 +9,10 @@ class Database {
         // 1. Muat konfigurasi dari file .env
         $this->loadEnv();
 
-        $dbHost = getenv('DB_HOST');
-        $dbName = getenv('DB_NAME') ?: getenv('DB_DATABASE');
-        $dbUser = getenv('DB_USER') ?: getenv('DB_USERNAME');
-        $dbPass = getenv('DB_PASS') ?: getenv('DB_PASSWORD');
+        $dbHost = $_ENV['DB_HOST'] ?? getenv('DB_HOST');
+        $dbName = $_ENV['DB_NAME'] ?? getenv('DB_NAME') ?: ($_ENV['DB_DATABASE'] ?? getenv('DB_DATABASE'));
+        $dbUser = $_ENV['DB_USER'] ?? getenv('DB_USER') ?: ($_ENV['DB_USERNAME'] ?? getenv('DB_USERNAME'));
+        $dbPass = $_ENV['DB_PASS'] ?? getenv('DB_PASS') ?: ($_ENV['DB_PASSWORD'] ?? getenv('DB_PASSWORD'));
 
         // Validasi untuk memastikan variabel .env dimuat.
         if (empty($dbHost) || empty($dbName) || empty($dbUser)) {
@@ -75,7 +75,9 @@ class Database {
 
                 // Set environment variable jika belum ada
                 if (!array_key_exists($name, $_SERVER) && !array_key_exists($name, $_ENV)) {
-                    putenv(sprintf('%s=%s', $name, $value));
+                    if (function_exists('putenv')) {
+                        putenv(sprintf('%s=%s', $name, $value));
+                    }
                     $_ENV[$name] = $value;
                     $_SERVER[$name] = $value;
                 }

@@ -31,6 +31,7 @@ const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";                      // API Ke
 const char* api_log_endpoint = "/api/log";                  // Sesuaikan dengan struktur URL di server live
 const char* api_status_endpoint = "/api/status";            // Sesuaikan dengan struktur URL di server live
 const char* api_offline_log_endpoint = "/api/log-offline";  // Sesuaikan dengan struktur URL di server live
+const char* api_update_endpoint = "/api/update";            // Endpoint untuk mengirim laporan/perintah
 
 // Fingerprint SHA1 dari sertifikat SSL/TLS server Anda.
 // Anda bisa mendapatkannya dengan membuka https://apps.selur.desa.id/ di browser, klik ikon gembok, lihat detail sertifikat.
@@ -699,7 +700,7 @@ void sendControlCommand(const char* action, const char* value) {
   client.setInsecure();
   HTTPClient http;
   char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s/api/update", server_domain);
+  snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_update_endpoint);
 
   if (http.begin(client, serverPath)) {
     http.addHeader("Content-Type", "application/json");
@@ -838,25 +839,26 @@ void sendOfflineLogs() {
 }
 
 void measureAndSendData() {
-  const int NUM_READINGS = 5;
+  const int NUM_READINGS = 8; // Sedikit diperbanyak untuk stabilitas
   float totalDistance = 0;
   int validReadings = 0;
 
   for (int i = 0; i < NUM_READINGS; i++) {
     digitalWrite(TRIGPIN, LOW);
-    delayMicroseconds(2);
+    delayMicroseconds(5);
     digitalWrite(TRIGPIN, HIGH);
-    delayMicroseconds(10);
+    delayMicroseconds(15); // Trigger sedikit lebih lama
     digitalWrite(TRIGPIN, LOW);
 
-    float duration = pulseIn(ECHOPIN, HIGH, 35000);
-    float singleReading = ((duration / 2) * 0.343) / 10;
+    float duration = pulseIn(ECHOPIN, HIGH, 30000); // Timeout 30ms (~5 meter)
+    float singleReading = (duration / 2.0) * 0.0343;
 
-    if (singleReading > 0) {
+    // Filter: Abaikan 0 dan nilai tidak masuk akal (> 500cm)
+    if (singleReading > 2.0 && singleReading < 500.0) {
       totalDistance += singleReading;
       validReadings++;
     }
-    delay(30);
+    delay(50); // Jeda antar ping diperlama untuk mengurangi interferensi gema
   }
 
   float oversampledDistance;

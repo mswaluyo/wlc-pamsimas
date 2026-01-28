@@ -45,15 +45,38 @@ function isActive(string $path, bool $exactMatch = true): string {
  * @return string URL lengkap (misal: 'http://localhost/wlc/public/dashboard').
  */
 function base_url($path = '') {
-    $url = defined('BASE_URL') ? BASE_URL : '';
+    $url = '';
 
-    // Deteksi otomatis jika berjalan di HTTPS (termasuk Cloudflare/Proxy)
-    $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') 
-            || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')
-            || (isset($_SERVER['REQUEST_SCHEME']) && $_SERVER['REQUEST_SCHEME'] === 'https');
+    // 1. Cek konstanta BASE_URL (jika didefinisikan manual di index.php)
+    if (defined('BASE_URL')) {
+        $url = BASE_URL;
+    }
+    // 2. Cek Environment Variable APP_URL (dari file .env) - Prioritas Utama
+    elseif (($envUrl = getenv('APP_URL')) !== false && !empty($envUrl)) {
+        $url = $envUrl;
+    } elseif (isset($_ENV['APP_URL']) && !empty($_ENV['APP_URL'])) {
+        $url = $_ENV['APP_URL'];
+    } elseif (isset($_SERVER['APP_URL']) && !empty($_SERVER['APP_URL'])) {
+        $url = $_SERVER['APP_URL'];
+    }
+    // 3. Deteksi Otomatis (Fallback jika .env belum dimuat)
+    else {
+        $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
+        
+        // Dukungan untuk Reverse Proxy / Cloudflare
+        if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+            $protocol = 'https';
+        }
 
-    if ($isHttps && strpos($url, 'http://') === 0) {
-        $url = str_replace('http://', 'https://', $url);
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $scriptDir = dirname($_SERVER['SCRIPT_NAME'] ?? '');
+        $scriptDir = str_replace('\\', '/', $scriptDir); // Normalisasi slash Windows
+        
+        if ($scriptDir !== '/') {
+            $scriptDir = rtrim($scriptDir, '/');
+        }
+
+        $url = $protocol . "://" . $host . $scriptDir;
     }
 
     return rtrim($url, '/') . '/' . ltrim($path, '/');
