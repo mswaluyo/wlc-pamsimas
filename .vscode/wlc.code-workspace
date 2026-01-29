@@ -1,10 +1,10 @@
 {
 	"folders": [
 		{
-			"path": "."
+			"path": "../../../../Projects/Android/BanyuTech"
 		},
 		{
-			"path": "../../../Projects/Android/BanyuTech"
+			"path": ".."
 		}
 	],
 	"settings": {

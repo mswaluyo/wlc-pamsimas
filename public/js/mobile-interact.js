@@ -64,15 +64,45 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.appendChild(copyright);
     }
 
-    // 4. Ubah tombol "Tambah Perangkat" menjadi FAB (Floating Action Button) di Mobile
+    // 4. Ubah tombol aksi utama (Tambah, Scan, Simpan, dll) menjadi FAB di Mobile
     if (window.innerWidth <= 768) {
-        var links = document.querySelectorAll('a');
-        links.forEach(function(link) {
-            var text = link.innerText.trim();
-            if (text.includes('Tambah Perangkat') || (link.href && link.href.includes('controllers/register'))) {
-                link.title = text; // Tambahkan Tooltip
-                link.innerHTML = '<i class="fas fa-plus"></i>';
-                link.className = 'mobile-fab-btn'; // Ganti class sepenuhnya menjadi FAB
+        // Seleksi tombol yang potensial: Link atau Button dengan class .btn
+        var candidates = document.querySelectorAll('a.btn, button.btn');
+        
+        candidates.forEach(function(btn) {
+            // Abaikan tombol di dalam tabel, form, modal, navbar, atau sidebar
+            if (btn.closest('table') || btn.closest('form') || btn.closest('.modal') || btn.closest('.navbar') || btn.closest('.sidebar')) {
+                return;
+            }
+
+            var text = btn.innerText.trim();
+            var lowerText = text.toLowerCase();
+            var icon = btn.querySelector('i');
+
+            // Kriteria tombol yang akan dijadikan FAB:
+            // Mengandung kata kunci aksi ATAU memiliki class btn-primary/success
+            var keywords = ['tambah', 'scan', 'daftar', 'import', 'export', 'simpan', 'new', 'create'];
+            var isKeywordMatch = keywords.some(k => lowerText.includes(k));
+            var isStyleMatch = btn.classList.contains('btn-primary') || btn.classList.contains('btn-success');
+
+            if ((isKeywordMatch || isStyleMatch) && text.length > 0) {
+                btn.title = text; // Simpan teks asli sebagai label
+                
+                // Jika belum ada icon, berikan icon default berdasarkan teks
+                if (!icon) {
+                    if (lowerText.includes('tambah')) btn.innerHTML = '<i class="fas fa-plus"></i>';
+                    else if (lowerText.includes('scan')) btn.innerHTML = '<i class="fas fa-search"></i>';
+                    else if (lowerText.includes('simpan')) btn.innerHTML = '<i class="fas fa-save"></i>';
+                    else btn.innerHTML = '<i class="fas fa-bolt"></i>';
+                } else {
+                    // Jika sudah ada icon, pastikan hanya icon yang tampil
+                    var iconClone = icon.cloneNode(true);
+                    btn.innerHTML = '';
+                    btn.appendChild(iconClone);
+                }
+
+                // Tambahkan class khusus agar diproses oleh Logic FAB Group (Poin 6)
+                btn.classList.add('mobile-fab-btn');
             }
         });
     }
@@ -94,8 +124,105 @@ document.addEventListener('DOMContentLoaded', function() {
                 btn.style.display = 'inline-flex';
                 btn.style.justifyContent = 'center';
                 btn.style.alignItems = 'center';
-                btn.style.padding = '8px'; // Padding seimbang
+                btn.style.width = '40px'; // Lebar tetap agar bulat sempurna
+                btn.style.height = '40px'; // Tinggi tetap agar bulat sempurna
+                btn.style.padding = '0'; // Reset padding
+                btn.style.borderRadius = '50%'; // Buat jadi bulat
             }
+        });
+    }
+
+    // 6. Sistem FAB Group (Auto Hide / Speed Dial) untuk Mobile
+    // Mengumpulkan semua tombol FAB ke dalam satu menu toggle agar rapi
+    if (window.innerWidth <= 768) {
+        // Cari atau buat container utama
+        var fabContainer = document.getElementById('fab-container');
+        if (!fabContainer) {
+            fabContainer = document.createElement('div');
+            fabContainer.id = 'fab-container';
+            fabContainer.style.cssText = 'position: fixed; bottom: 15px; right: 15px; z-index: 9990; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 15px;';
+            document.body.appendChild(fabContainer);
+
+            // Wrapper untuk tombol-tombol aksi (Hidden by default)
+            var actionWrapper = document.createElement('div');
+            actionWrapper.id = 'fab-actions';
+            actionWrapper.style.cssText = 'display: flex; flex-direction: column-reverse; gap: 15px; align-items: center; opacity: 0; transform: translateY(20px); transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55); pointer-events: none; margin-bottom: 5px;';
+            fabContainer.appendChild(actionWrapper);
+
+            // Tombol Toggle Utama (Menu)
+            var toggleBtn = document.createElement('button');
+            toggleBtn.id = 'fab-toggle';
+            toggleBtn.className = 'btn btn-primary';
+            toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            toggleBtn.style.cssText = 'width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 9992; font-size: 22px; padding: 0; border: none; transition: transform 0.3s ease;';
+            fabContainer.appendChild(toggleBtn);
+
+            // Logika Toggle
+            var isOpen = false;
+            toggleBtn.onclick = function(e) {
+                e.stopPropagation();
+                isOpen = !isOpen;
+                if (isOpen) {
+                    toggleBtn.innerHTML = '<i class="fas fa-times"></i>';
+                    toggleBtn.style.transform = 'rotate(90deg)';
+                    actionWrapper.style.opacity = '1';
+                    actionWrapper.style.transform = 'translateY(0)';
+                    actionWrapper.style.pointerEvents = 'auto';
+                } else {
+                    toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+                    toggleBtn.style.transform = 'rotate(0deg)';
+                    actionWrapper.style.opacity = '0';
+                    actionWrapper.style.transform = 'translateY(20px)';
+                    actionWrapper.style.pointerEvents = 'none';
+                }
+            };
+
+            // Tutup menu jika klik di luar
+            document.addEventListener('click', function(e) {
+                if (isOpen && !fabContainer.contains(e.target)) {
+                    toggleBtn.click();
+                }
+            });
+        }
+
+        // Pindahkan tombol FAB "Tambah Perangkat" (dari poin 4) ke dalam actionWrapper
+        var existingFabs = document.querySelectorAll('.mobile-fab-btn');
+        var actionWrapper = document.getElementById('fab-actions');
+        
+        existingFabs.forEach(function(btn) {
+            // Reset posisi fixed agar mengikuti flow container
+            btn.style.position = 'static';
+            btn.style.margin = '0';
+            btn.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+            btn.style.width = '45px';
+            btn.style.height = '45px';
+            btn.style.borderRadius = '50%';
+            btn.style.display = 'flex';
+            btn.style.justifyContent = 'center';
+            btn.style.alignItems = 'center';
+            btn.style.padding = '0';
+            
+            // Bungkus dengan label teks
+            var itemContainer = document.createElement('div');
+            itemContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-direction: row-reverse;';
+            
+            var label = document.createElement('span');
+            label.innerText = btn.title || 'Tambah';
+            label.style.cssText = 'background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap;';
+            
+            itemContainer.appendChild(btn);
+            itemContainer.appendChild(label);
+            
+            // Tambahkan listener untuk menutup menu secara otomatis saat item aksi diklik
+            itemContainer.addEventListener('click', function() {
+                var toggleBtn = document.getElementById('fab-toggle');
+                // Cek apakah menu sedang terbuka (dengan melihat ikon 'close')
+                if (toggleBtn && toggleBtn.querySelector('.fa-times')) {
+                    toggleBtn.click(); // Simulasikan klik pada tombol toggle untuk menutupnya
+                }
+            });
+
+            actionWrapper.appendChild(itemContainer);
         });
     }
 });

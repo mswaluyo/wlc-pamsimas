@@ -28,8 +28,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 .finally(() => {
                     // 3. Kembalikan UI ke status normal
                     scanButton.disabled = false;
-                    scanButton.style.display = 'inline-block';
-                    scanButton.innerHTML = '<i class="fas fa-redo"></i> Scan Ulang';
+                    if (window.innerWidth <= 768) {
+                        scanButton.innerHTML = '<i class="fas fa-redo"></i>';
+                        // Style Floating Button (Konsisten dengan inisialisasi)
+                        scanButton.style.display = 'flex';
+                    } else {
+                        scanButton.innerHTML = '<i class="fas fa-redo"></i> Scan Ulang';
+                        scanButton.style.display = 'inline-block';
+                    }
                     loadingSpinner.style.display = 'none';
                     scanWrapper.classList.remove('scanning');
                 });
@@ -51,6 +57,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // URL untuk mendaftarkan perangkat
             const registerUrl = `${BASE_URL}controllers/register?mac=${encodeURIComponent(mac)}`;
 
+            // Deteksi Mobile untuk styling tombol bulat (Konsisten dengan mobile-interact.js)
+            let btnContent = '<i class="fas fa-plus"></i> Daftar';
+            let btnStyle = '';
+            if (window.innerWidth <= 768) {
+                btnContent = '<i class="fas fa-plus"></i>';
+                btnStyle = 'width: 40px; height: 40px; padding: 0; border-radius: 50%; display: inline-flex; justify-content: center; align-items: center;';
+            }
+
             deviceCard.innerHTML = `
                 <div>
                     <h3 style="margin: 0 0 5px 0; color: var(--secondary-color);">WLC Controller</h3>
@@ -59,8 +73,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <small style="color: var(--success-color);"><i class="fas fa-circle" style="font-size: 8px;"></i> Online</small>
                 </div>
-                <a href="${registerUrl}" class="btn btn-success btn-sm">
-                    <i class="fas fa-plus"></i> Daftar
+                <a href="${registerUrl}" class="btn btn-success btn-sm" style="${btnStyle}" title="Daftar">
+                    ${btnContent}
                 </a>
             `;
             deviceList.appendChild(deviceCard);
