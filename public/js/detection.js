@@ -8,7 +8,14 @@ document.addEventListener('DOMContentLoaded', function() {
     scanButton.addEventListener('click', function() {
         // 1. Update UI ke status scanning
         scanButton.disabled = true;
-        scanButton.style.display = 'none';
+        
+        // Cek apakah tombol ada di dalam wrapper FAB (mobile) agar labelnya juga disembunyikan
+        if (window.innerWidth <= 768 && scanButton.parentNode.tagName === 'DIV' && scanButton.parentNode.parentNode.id === 'fab-actions') {
+             scanButton.parentNode.style.display = 'none'; 
+        } else {
+             scanButton.style.display = 'none';
+        }
+        
         loadingSpinner.style.display = 'block';
         scanStatus.textContent = 'Sedang memindai jaringan untuk perangkat aktif...';
         scanWrapper.classList.add('scanning');
@@ -31,7 +38,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (window.innerWidth <= 768) {
                         scanButton.innerHTML = '<i class="fas fa-redo"></i>';
                         // Style Floating Button (Konsisten dengan inisialisasi)
-                        scanButton.style.display = 'flex';
+                        if (scanButton.parentNode.tagName === 'DIV' && scanButton.parentNode.parentNode.id === 'fab-actions') {
+                             scanButton.parentNode.style.display = 'flex';
+                             scanButton.style.display = 'flex';
+                        } else {
+                             scanButton.style.display = 'flex';
+                        }
                     } else {
                         scanButton.innerHTML = '<i class="fas fa-redo"></i> Scan Ulang';
                         scanButton.style.display = 'inline-block';

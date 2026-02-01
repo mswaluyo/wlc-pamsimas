@@ -450,9 +450,12 @@ class DeviceApiController {
      * Parameter GET: id (controller_id), range (menit)
      */
     public function getSensorHistory() {
-        // Izinkan akses jika login sebagai admin (Session) ATAU punya API Key
+        // PERBAIKAN: Endpoint ini hanya untuk browser, jadi hanya periksa session.
+        // Jangan validasi API Key karena browser tidak mengirimkannya.
         if (!isset($_SESSION['user'])) {
-            $this->validateApiKey();
+            http_response_code(401); // Unauthorized
+            echo json_encode(['error' => 'Unauthorized: Login required.']);
+            return;
         }
 
         $controller_id = $_GET['id'] ?? null;
@@ -464,25 +467,52 @@ class DeviceApiController {
             return;
         }
 
-        $pdo = \Database::getInstance()->getConnection();
-        
-        // Ambil data berdasarkan rentang waktu
-        $sql = "SELECT record_time, water_level, water_percentage 
-                FROM sensor_logs 
-                WHERE controller_id = :id 
-                AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) 
-                ORDER BY record_time ASC";
-        
-        // Batasi jumlah titik data jika rentang waktu sangat besar agar browser tidak berat
-        if ($range_minutes > 1440) { // Jika lebih dari 24 jam, ambil sampel (misal: setiap baris ke-n) atau limit
-             $sql .= " LIMIT 2000"; 
+        try {
+            $pdo = \Database::getInstance()->getConnection();
+            
+            // Ambil data berdasarkan rentang waktu
+            $sql = "SELECT record_time, water_level, water_percentage 
+                    FROM sensor_logs 
+                    WHERE controller_id = :id 
+                    AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) 
+                    ORDER BY record_time ASC";
+            
+            // Batasi jumlah titik data jika rentang waktu sangat besar agar browser tidak berat
+            if ($range_minutes > 1440) { 
+                 $sql .= " LIMIT 2000"; 
+            }
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([':id' => $controller_id, ':range' => $range_minutes]);
+            $sensorData = $stmt->fetchAll();
+
+            // Ambil data status pompa dengan penanganan error (Try-Catch)
+            $pumpData = [];
+            try {
+                // Coba gunakan 'record_time' (konsisten dengan sensor_logs)
+                $sqlPump = "SELECT record_time, status FROM pump_logs WHERE controller_id = :id AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) ORDER BY record_time ASC";
+                $stmtPump = $pdo->prepare($sqlPump);
+                $stmtPump->execute([':id' => $controller_id, ':range' => $range_minutes]);
+                $pumpData = $stmtPump->fetchAll();
+            } catch (\Exception $e) {
+                // Fallback: Jika gagal, coba gunakan 'created_at'
+                try {
+                    $sqlPump = "SELECT created_at as record_time, status FROM pump_logs WHERE controller_id = :id AND created_at >= DATE_SUB(NOW(), INTERVAL :range MINUTE) ORDER BY created_at ASC";
+                    $stmtPump = $pdo->prepare($sqlPump);
+                    $stmtPump->execute([':id' => $controller_id, ':range' => $range_minutes]);
+                    $pumpData = $stmtPump->fetchAll();
+                } catch (\Exception $ex) {
+                    // Jika masih gagal (tabel tidak ada?), biarkan array kosong agar grafik utama tetap jalan
+                    $pumpData = [];
+                }
+            }
+
+            header('Content-Type: application/json');
+            echo json_encode(['sensors' => $sensorData, 'pumps' => $pumpData]);
+        } catch (\Exception $e) {
+            http_response_code(500);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Server Error: ' . $e->getMessage()]);
         }
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([':id' => $controller_id, ':range' => $range_minutes]);
-        $data = $stmt->fetchAll();
-
-        header('Content-Type: application/json');
-        echo json_encode($data);
     }
 }

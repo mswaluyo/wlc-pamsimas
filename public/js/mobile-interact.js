@@ -70,18 +70,26 @@ document.addEventListener('DOMContentLoaded', function() {
         var candidates = document.querySelectorAll('a.btn, button.btn');
         
         candidates.forEach(function(btn) {
-            // Abaikan tombol di dalam tabel, form, modal, navbar, atau sidebar
-            if (btn.closest('table') || btn.closest('form') || btn.closest('.modal') || btn.closest('.navbar') || btn.closest('.sidebar')) {
+            // Abaikan tombol di dalam tabel, modal, navbar, atau sidebar
+            // CATATAN: Tombol dalam form (btn.closest('form')) KINI DIIZINKAN agar tombol "Simpan" masuk ke FAB
+            if (btn.closest('table') || btn.closest('.modal') || btn.closest('.navbar') || btn.closest('.sidebar')) {
                 return;
             }
 
             var text = btn.innerText.trim();
             var lowerText = text.toLowerCase();
+            
+            // Filter tambahan: Abaikan tombol yang bersifat navigasi balik, tutup, atau pembatalan
+            var excludeKeywords = ['tutup', 'close', 'batal', 'cancel', 'kembali', 'back'];
+            if (excludeKeywords.some(k => lowerText.includes(k))) {
+                return;
+            }
+            
             var icon = btn.querySelector('i');
 
             // Kriteria tombol yang akan dijadikan FAB:
             // Mengandung kata kunci aksi ATAU memiliki class btn-primary/success
-            var keywords = ['tambah', 'scan', 'daftar', 'import', 'export', 'simpan', 'new', 'create'];
+            var keywords = ['tambah', 'scan', 'daftar', 'import', 'export', 'simpan', 'new', 'create', 'cari', 'search', 'deteksi'];
             var isKeywordMatch = keywords.some(k => lowerText.includes(k));
             var isStyleMatch = btn.classList.contains('btn-primary') || btn.classList.contains('btn-success');
 
@@ -91,7 +99,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Jika belum ada icon, berikan icon default berdasarkan teks
                 if (!icon) {
                     if (lowerText.includes('tambah')) btn.innerHTML = '<i class="fas fa-plus"></i>';
-                    else if (lowerText.includes('scan')) btn.innerHTML = '<i class="fas fa-search"></i>';
+                    else if (lowerText.includes('scan') || lowerText.includes('cari') || lowerText.includes('search') || lowerText.includes('deteksi')) btn.innerHTML = '<i class="fas fa-search"></i>';
                     else if (lowerText.includes('simpan')) btn.innerHTML = '<i class="fas fa-save"></i>';
                     else btn.innerHTML = '<i class="fas fa-bolt"></i>';
                 } else {
@@ -99,6 +107,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     var iconClone = icon.cloneNode(true);
                     btn.innerHTML = '';
                     btn.appendChild(iconClone);
+                }
+
+                // Jika tombol berasal dari form, pastikan tetap bisa submit form tersebut setelah dipindah
+                var parentForm = btn.closest('form');
+                if (parentForm) {
+                    if (!parentForm.id) {
+                        parentForm.id = 'form-' + Math.random().toString(36).substr(2, 9);
+                    }
+                    btn.setAttribute('form', parentForm.id);
                 }
 
                 // Tambahkan class khusus agar diproses oleh Logic FAB Group (Poin 6)
@@ -135,27 +152,65 @@ document.addEventListener('DOMContentLoaded', function() {
     // 6. Sistem FAB Group (Auto Hide / Speed Dial) untuk Mobile
     // Mengumpulkan semua tombol FAB ke dalam satu menu toggle agar rapi
     if (window.innerWidth <= 768) {
+        // Cek apakah ada tombol aksi di halaman ini
+        var existingFabs = document.querySelectorAll('.mobile-fab-btn');
+        // if (existingFabs.length === 0) return; // HAPUS: Menu Sidebar akan selalu ada di FAB
+
         // Cari atau buat container utama
         var fabContainer = document.getElementById('fab-container');
         if (!fabContainer) {
             fabContainer = document.createElement('div');
             fabContainer.id = 'fab-container';
-            fabContainer.style.cssText = 'position: fixed; bottom: 15px; right: 15px; z-index: 9990; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 15px;';
+            // UPDATE: Jarak diperkecil (10px) agar lebih ke pojok, gap diperkecil
+            fabContainer.style.cssText = 'position: fixed; bottom: 10px; right: 10px; z-index: 9990; display: flex; flex-direction: column-reverse; align-items: flex-end; gap: 10px;';
             document.body.appendChild(fabContainer);
 
             // Wrapper untuk tombol-tombol aksi (Hidden by default)
             var actionWrapper = document.createElement('div');
             actionWrapper.id = 'fab-actions';
-            actionWrapper.style.cssText = 'display: flex; flex-direction: column-reverse; gap: 15px; align-items: center; opacity: 0; transform: translateY(20px); transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55); pointer-events: none; margin-bottom: 5px;';
-            fabContainer.appendChild(actionWrapper);
+            // UPDATE: align-items: flex-end agar menu rata kanan
+            actionWrapper.style.cssText = 'display: flex; flex-direction: column-reverse; gap: 10px; align-items: flex-end; opacity: 0; transform: translateY(20px); transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55); pointer-events: none; margin-bottom: 10px;';
 
             // Tombol Toggle Utama (Menu)
             var toggleBtn = document.createElement('button');
             toggleBtn.id = 'fab-toggle';
             toggleBtn.className = 'btn btn-primary';
             toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
-            toggleBtn.style.cssText = 'width: 55px; height: 55px; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 9992; font-size: 22px; padding: 0; border: none; transition: transform 0.3s ease;';
+            // UPDATE: Ukuran sedikit diperkecil (50px) agar proporsional di pojok
+            toggleBtn.style.cssText = 'width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); z-index: 9992; font-size: 20px; padding: 0; border: none; transition: transform 0.3s ease;';
+            
+            // PERBAIKAN URUTAN: Tambahkan tombol dulu, baru wrapper aksi.
+            // Karena 'column-reverse', elemen pertama (toggleBtn) akan visualnya di paling bawah.
+            // Elemen kedua (actionWrapper) akan visualnya di atas tombol (naik).
             fabContainer.appendChild(toggleBtn);
+            fabContainer.appendChild(actionWrapper);
+
+            // --- TAMBAHAN: Masukkan Tombol "Menu Sidebar" ke dalam FAB ---
+            var menuContainer = document.createElement('div');
+            menuContainer.style.cssText = 'display: flex; align-items: center; gap: 10px; flex-direction: row-reverse;';
+            
+            var menuBtn = document.createElement('button');
+            menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            menuBtn.style.cssText = 'width: 45px; height: 45px; border-radius: 50%; display: flex; justify-content: center; align-items: center; padding: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.2); border: none; background-color: #f39c12; color: white; cursor: pointer;';
+            
+            menuBtn.onclick = function() {
+                var defaultToggle = document.getElementById('mobile-menu-toggle');
+                if (defaultToggle) defaultToggle.click(); // Trigger tombol asli untuk buka sidebar
+                toggleBtn.click(); // Tutup menu FAB
+            };
+
+            var menuLabel = document.createElement('span');
+            menuLabel.innerText = 'Menu Utama';
+            menuLabel.style.cssText = 'background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap;';
+            
+            menuContainer.appendChild(menuBtn);
+            menuContainer.appendChild(menuLabel);
+            actionWrapper.appendChild(menuContainer);
+
+            // Sembunyikan tombol hamburger default (kiri atas) karena sudah pindah ke FAB
+            var defaultToggle = document.getElementById('mobile-menu-toggle');
+            if (defaultToggle) defaultToggle.style.display = 'none';
+            // -------------------------------------------------------------
 
             // Logika Toggle
             var isOpen = false;
@@ -186,7 +241,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Pindahkan tombol FAB "Tambah Perangkat" (dari poin 4) ke dalam actionWrapper
-        var existingFabs = document.querySelectorAll('.mobile-fab-btn');
         var actionWrapper = document.getElementById('fab-actions');
         
         existingFabs.forEach(function(btn) {
@@ -213,15 +267,6 @@ document.addEventListener('DOMContentLoaded', function() {
             itemContainer.appendChild(btn);
             itemContainer.appendChild(label);
             
-            // Tambahkan listener untuk menutup menu secara otomatis saat item aksi diklik
-            itemContainer.addEventListener('click', function() {
-                var toggleBtn = document.getElementById('fab-toggle');
-                // Cek apakah menu sedang terbuka (dengan melihat ikon 'close')
-                if (toggleBtn && toggleBtn.querySelector('.fa-times')) {
-                    toggleBtn.click(); // Simulasikan klik pada tombol toggle untuk menutupnya
-                }
-            });
-
             actionWrapper.appendChild(itemContainer);
         });
     }
