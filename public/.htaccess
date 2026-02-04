@@ -1,6 +1,16 @@
 <IfModule mod_rewrite.c>
+    Options -Indexes -MultiViews
     RewriteEngine On
+
+    # Pastikan Authorization header diteruskan (penting untuk API/JWT)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Jika request bukan file fisik
     RewriteCond %{REQUEST_FILENAME} !-f
+    # Dan bukan folder fisik
     RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Arahkan semua request lainnya ke index.php
     RewriteRule ^ index.php [L]
 </IfModule>

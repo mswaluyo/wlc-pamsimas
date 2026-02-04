@@ -8,13 +8,23 @@ use app\Models\Tank;
 use app\Models\Pump;
 use app\Models\Sensor;
 use app\Models\User;
+use app\Models\PumpLog;
 
 class DashboardController {
 
     public function __construct() {
+        $timezone = $_ENV['TIMEZONE'] ?? getenv('TIMEZONE') ?? 'Asia/Jakarta';
+        date_default_timezone_set($timezone);
+
         if (!isset($_SESSION['user'])) {
             header('Location: ' . base_url('/login'));
             exit();
+        }
+
+        // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
         }
     }
 
@@ -28,12 +38,38 @@ class DashboardController {
         // Hitung statistik
         $totalControllers = count($controllers);
         $onlineControllers = 0;
-        foreach ($controllers as $controller) {
-            // Anggap online jika update dalam 1 menit terakhir (60 detik)
-            if (strtotime($controller['last_update']) > (time() - 60)) {
+        
+        // Gunakan referensi (&) agar kita bisa memodifikasi array asli untuk tampilan awal
+        foreach ($controllers as &$controller) {
+            // PERBAIKAN: Tingkatkan toleransi menjadi 120 detik agar status lebih stabil
+            $isOnline = (strtotime($controller['last_update']) > (time() - 120));
+            $controller['is_online'] = $isOnline;
+
+            if ($isOnline) {
                 $onlineControllers++;
             }
+
+            // Hitung durasi status pompa saat ini (detik) agar Timer Gauge tidak "-" saat load awal
+            $lastLogTime = PumpLog::getLastLogTime($controller['id']);
+            
+            // Fix Timezone: Pastikan parsing waktu sesuai konfigurasi .env
+            $ts = 0;
+            if ($lastLogTime) {
+                try {
+                    $timezone = $_ENV['TIMEZONE'] ?? 'Asia/Jakarta';
+                    $dt = new \DateTime($lastLogTime, new \DateTimeZone($timezone));
+                    $ts = $dt->getTimestamp();
+                } catch (\Exception $e) {
+                    $ts = strtotime($lastLogTime);
+                }
+            }
+            
+            $controller['last_pump_change_timestamp'] = $ts;
+            
+            $duration = $ts ? (time() - $ts) : 0;
+            $controller['current_pump_duration'] = max(0, $duration); // Cegah nilai negatif akibat selisih timezone
         }
+        unset($controller); // Hapus referensi
 
         // --- LOGIKA BARU: Cek Sinkronisasi ---
         // Indexing data master untuk lookup cepat
@@ -120,7 +156,8 @@ class DashboardController {
             'controllers' => $controllers,
             'indicator_settings' => $indicatorSettings,
             'active_template' => $activeTemplateData, // Kirim data template yang sudah diproses
-            'out_of_sync_devices' => $outOfSyncDevices // Data perangkat yang tidak sinkron
+            'out_of_sync_devices' => $outOfSyncDevices, // Data perangkat yang tidak sinkron
+            'page_scripts' => ['js/dashboard-live.js?v=' . microtime(true)] // Tambahkan script live update dengan cache busting yang lebih kuat
         ];
 
         view('dashboard/index', $data);

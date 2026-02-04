@@ -270,6 +270,20 @@ Saat memindahkan aplikasi ke server produksi (hosting):
 3.  **Izin Folder**: Pastikan folder `storage/` memiliki izin tulis (**Write Permissions**, biasanya 755 atau 775) agar fitur deteksi perangkat dan logging berfungsi.
 4.  **Database**: Ekspor database lokal Anda ke file `.sql` dan impor ke database hosting melalui phpMyAdmin.
 
+### Konfigurasi Server Nginx (LEMP)
+
+Karena Nginx tidak membaca file `.htaccess`, Anda perlu menambahkan konfigurasi routing berikut ke dalam blok server Nginx Anda (biasanya di `/etc/nginx/sites-available/default` atau file konfigurasi situs Anda).
+
+Pastikan `root` mengarah ke folder `public`.
+
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
+
+Contoh konfigurasi lengkap dapat dilihat di file `nginx.conf.example` yang disertakan dalam proyek ini.
+
 ### 3. Persyaratan Server
 *   PHP 7.4 atau lebih baru.
 *   Ekstensi PHP: PDO, JSON.

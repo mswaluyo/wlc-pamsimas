@@ -22,6 +22,12 @@ class SettingController {
             echo "<h1>403 Forbidden</h1><p>Anda tidak memiliki hak akses ke halaman ini.</p>";
             exit();
         }
+
+        // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
+        }
     }
 
     /**
@@ -264,6 +270,7 @@ class SettingController {
         ];
 
         Sensor::update((int)$id, $data);
+        $_SESSION['success_message'] = 'Data sensor berhasil diperbarui. PENTING: Lakukan "Sinkronisasi" di menu Perangkat agar perubahan ini diterapkan ke alat.';
         header('Location: ' . base_url('/settings/sensors'));
         exit();
     }

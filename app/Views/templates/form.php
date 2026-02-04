@@ -2,7 +2,7 @@
     <h1><?php echo $title; ?></h1>
     <p>Buat atau edit template dengan menempelkan kode HTML, CSS, dan JavaScript di bawah ini.</p>
 
-    <form action="<?php echo $form_action ?? '/wlc/templates/create'; ?>" method="POST" enctype="multipart/form-data" style="max-width: 600px;">
+    <form action="<?php echo $form_action ?? base_url('/templates/create'); ?>" method="POST" enctype="multipart/form-data" style="max-width: 600px;">
         <div class="form-group">
             <label for="name">Nama Template</label>
             <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($template['name'] ?? ''); ?>" required>
@@ -33,7 +33,7 @@
 
         <div style="margin-top: 20px;">
             <button type="submit" class="btn btn-primary">Simpan Template</button>
-            <a href="/wlc/templates" class="btn btn-secondary">Batal</a>
+            <a href="<?= base_url('/templates') ?>" class="btn btn-secondary">Batal</a>
         </div>
     </form>
 </div>

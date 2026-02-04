@@ -6,8 +6,10 @@ $router->get('/api/status', 'Api\DeviceApiController@status');         // Endpoi
 $router->post('/api/update', 'Api\DeviceApiController@update');        // Endpoint untuk menerima perintah dari perangkat (mode, status, event).
 $router->post('/api/log-offline', 'Api\DeviceApiController@logOffline'); // Endpoint untuk menerima log yang tersimpan saat offline.
 $router->get('/api/detected-devices', 'Api\DeviceApiController@getDetectedDevices');
-$router->get('/api/dashboard-data', 'Api\DeviceApiController@getDashboardData'); // RUTE BARU: Untuk live update dashboard
+$router->get('/api/dashboard/data', 'Api\DeviceApiController@getDashboardData'); // Pastikan baris ini ada di server
+$router->get('/api/dashboard-data', 'Api\DeviceApiController@getDashboardData'); // Alias untuk kompatibilitas script lama
 $router->get('/api/device/history', 'Api\DeviceApiController@getSensorHistory'); // Endpoint untuk data grafik history
+$router->get('/api/terminal/events', 'Api\DeviceApiController@getTerminalEvents'); // Endpoint untuk terminal monitoring
 
 // Rute untuk preview template
 $router->get('/api/template-preview/{id}', 'Api\DeviceApiController@getTemplatePreview');

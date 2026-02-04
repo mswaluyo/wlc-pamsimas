@@ -6,6 +6,9 @@ use app\Models\User;
 
 class AuthController {
 
+    public function __construct() {
+    }
+
     /**
      * Menampilkan halaman form login.
      */

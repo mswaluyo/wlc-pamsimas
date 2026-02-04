@@ -12,9 +12,18 @@ use app\Models\Sensor;
 class ControllerController {
 
     public function __construct() {
+        $timezone = $_ENV['TIMEZONE'] ?? getenv('TIMEZONE') ?? 'Asia/Jakarta';
+        date_default_timezone_set($timezone);
+
         if (!isset($_SESSION['user'])) {
             header('Location: ' . base_url('/login'));
             exit();
+        }
+
+        // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
         }
     }
 
@@ -28,8 +37,8 @@ class ControllerController {
         // Logika Filter: Jika ada parameter ?status=online di URL
         if (isset($_GET['status']) && $_GET['status'] === 'online') {
             $controllers = array_filter($controllers, function($device) {
-                // Anggap online jika update terakhir kurang dari 1 menit (60 detik) yang lalu
-                return strtotime($device['last_update']) > (time() - 60);
+                // PERBAIKAN: Tingkatkan toleransi menjadi 120 detik
+                return strtotime($device['last_update']) > (time() - 120);
             });
         }
 
@@ -346,17 +355,16 @@ class ControllerController {
             $updateData['off_duration'] = (int)($pump['off_duration_seconds'] / 60);
         }
 
-        // Lakukan update
-        if (count($updateData) > 1) { // Lebih dari 1 karena config_update_command selalu ada
-            Controller::update((int)$id, $updateData);
-        }
+        // Lakukan update (Selalu jalankan untuk mengirim config_update_command = 1)
+        // Ini penting agar perangkat dipaksa mengambil config terbaru meskipun data di DB sudah sama.
+        Controller::update((int)$id, $updateData);
 
-        // Kirim respons JSON kembali ke JavaScript
-        header('Content-Type: application/json');
-        echo json_encode([
-            'status' => 'success',
-            'message' => 'Sinkronisasi untuk perangkat ' . htmlspecialchars($controller['tank_name'] ?? $controller['mac_address']) . ' selesai.',
-            'changes' => $changesReport
-        ]);
+        // Set pesan sukses dan redirect kembali ke halaman daftar
+        $_SESSION['success_message'] = empty($changesReport) 
+            ? 'Data database sudah sinkron. Perintah update paksa dikirim ke perangkat ' . htmlspecialchars($controller['tank_name'] ?? $controller['mac_address']) . '.'
+            : 'Sinkronisasi selesai untuk ' . htmlspecialchars($controller['tank_name'] ?? $controller['mac_address']) . '. Perubahan diterapkan.';
+            
+        header('Location: ' . base_url('/controllers'));
+        exit();
     }
 }

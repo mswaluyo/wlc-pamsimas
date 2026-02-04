@@ -8,10 +8,28 @@ session_start([
     'gc_maxlifetime' => 2592000,
 ]);
 
-// PERBAIKAN: Atur zona waktu secara global di titik masuk aplikasi.
-date_default_timezone_set('Asia/Jakarta');
-
 define('ROOT_PATH', dirname(__DIR__));
+
+// --- Load .env file manually (Parser Sederhana) ---
+// Dimuat di awal agar konfigurasi seperti TIMEZONE tersedia global
+if (file_exists(ROOT_PATH . '/.env')) {
+    $lines = file(ROOT_PATH . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), '#') === 0) continue; // Lewati komentar
+        if (strpos($line, '=') !== false) {
+            list($name, $value) = explode('=', $line, 2);
+            $name = trim($name);
+            $value = trim($value);
+            putenv(sprintf('%s=%s', $name, $value));
+            $_ENV[$name] = $value;
+            $_SERVER[$name] = $value;
+        }
+    }
+}
+
+// PERBAIKAN: Atur zona waktu secara global di titik masuk aplikasi.
+$timezone = $_ENV['TIMEZONE'] ?? getenv('TIMEZONE') ?? 'Asia/Jakarta';
+date_default_timezone_set($timezone);
 
 // --- Maintenance Mode Check ---
 $maintenanceFile = ROOT_PATH . '/.maintenance';
@@ -31,21 +49,6 @@ if (file_exists($maintenanceFile)) {
     }
 }
 
-// --- Load .env file manually (Parser Sederhana) ---
-if (file_exists(ROOT_PATH . '/.env')) {
-    $lines = file(ROOT_PATH . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0) continue; // Lewati komentar
-        if (strpos($line, '=') !== false) {
-            list($name, $value) = explode('=', $line, 2);
-            $name = trim($name);
-            $value = trim($value);
-            putenv(sprintf('%s=%s', $name, $value));
-            $_ENV[$name] = $value;
-            $_SERVER[$name] = $value;
-        }
-    }
-}
 
 // Autoloader sederhana untuk memuat kelas secara otomatis
 spl_autoload_register(function ($className) {

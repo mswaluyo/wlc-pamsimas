@@ -10,15 +10,25 @@ use app\Models\EventLog; // Tambahkan model EventLog
 class LogController {
 
     public function __construct() {
+        $timezone = $_ENV['TIMEZONE'] ?? getenv('TIMEZONE') ?? 'Asia/Jakarta';
+        date_default_timezone_set($timezone);
+
         if (!isset($_SESSION['user'])) {
             header('Location: ' . base_url('/login'));
             exit();
+        }
+
+        // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
         }
     }
 
     public function pumpHistory() {
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         $limitParam = isset($_GET['limit']) ? $_GET['limit'] : 25;
+        $deviceId = isset($_GET['device_id']) && $_GET['device_id'] !== 'all' ? (int)$_GET['device_id'] : null;
 
         if ($limitParam === 'all') {
             $limit = 1000000; // Angka besar untuk mengambil semua
@@ -28,22 +38,44 @@ class LogController {
         }
         $offset = ($page - 1) * $limit;
 
-        $logs = PumpLog::getPaginatedHistory($limit, $offset);
-        $totalLogs = PumpLog::countAll();
+        $logs = PumpLog::getPaginatedHistory($limit, $offset, $deviceId);
+
+        $totalLogs = PumpLog::countAll($deviceId);
+        
+        // Ambil daftar controller untuk dropdown filter
+        $controllers = \app\Models\Controller::getAll();
 
         $data = [
             'title' => 'Riwayat Aktivitas Pompa',
             'logs' => $logs,
             'limit' => $limitParam,
+            'controllers' => $controllers,
+            'selected_device' => $deviceId,
             'pagination' => [
                 'current_page' => $page,
                 'total_pages' => ceil($totalLogs / $limit),
                 'base_url' => base_url('/logs/pumps'),
-                'limit' => $limitParam
+                'limit' => $limitParam,
+                'device_id' => $deviceId
             ]
         ];
 
         view('logs/pump_history', $data);
+    }
+
+    /**
+     * Aksi untuk membersihkan log pompa yang duplikat/spam.
+     */
+    public function cleanupPumps() {
+        if ($_SESSION['user']['role'] !== 'Administrator') {
+            http_response_code(403);
+            exit("Akses ditolak.");
+        }
+
+        $deletedCount = PumpLog::removeRedundantLogs();
+        $_SESSION['success_message'] = "Berhasil membersihkan $deletedCount data log pompa yang duplikat/spam.";
+        header('Location: ' . base_url('/logs/pumps'));
+        exit();
     }
 
     /**
@@ -62,6 +94,7 @@ class LogController {
         $offset = ($page - 1) * $limit;
 
         $logs = SensorLog::getPaginatedLogs($limit, $offset);
+
         $totalLogs = SensorLog::countAll();
 
         $data = [
@@ -146,5 +179,16 @@ class LogController {
         ];
 
         view('logs/events', $data);
+    }
+
+    /**
+     * Menampilkan halaman terminal monitoring real-time.
+     */
+    public function terminal() {
+        $data = [
+            'title' => 'Terminal Monitoring',
+            'page_scripts' => ['js/terminal-monitor.js']
+        ];
+        view('logs/terminal', $data);
     }
 }

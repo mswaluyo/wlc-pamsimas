@@ -1339,3 +1339,163 @@ body.login-page {
     width: 50px;
     text-align: center;
 }
+
+/* --- Terminal Monitoring Styles --- */
+.terminal-container {
+    background-color: #1e1e1e;
+    color: #00ff00;
+    font-family: 'Consolas', 'Monaco', 'Courier New', Courier, monospace;
+    border-radius: 6px;
+    padding: 0;
+    margin-top: 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.terminal-header {
+    background-color: #2d2d2d;
+    padding: 10px 15px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.terminal-title { font-weight: bold; color: #ddd; font-size: 0.9rem; }
+.terminal-status { font-size: 0.8em; color: #888; display: flex; align-items: center; gap: 5px; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background-color: #555; display: inline-block; }
+.status-dot.active { background-color: #00ff00; box-shadow: 0 0 5px #00ff00; }
+
+.terminal-window {
+    height: 350px;
+    overflow-y: auto;
+    padding: 10px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.terminal-line {
+    padding: 3px 0;
+    border-bottom: 1px solid #2a2a2a;
+    display: flex;
+    align-items: flex-start;
+}
+
+.terminal-time { color: #888; margin-right: 15px; min-width: 130px; white-space: nowrap; }
+.terminal-source { color: #4da6ff; margin-right: 15px; min-width: 120px; font-weight: bold; }
+.terminal-message { color: #e6e6e6; word-break: break-word; }
+.terminal-line:hover { background-color: #2a2a2a; }
+
+/* --- Chart Card Responsive Layout --- */
+.chart-card-container {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 30px; 
+    margin-top: 20px;
+}
+
+.chart-title {
+    grid-column: 1 / 2;
+    grid-row: 1;
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
+}
+
+.chart-controls-container {
+    grid-column: 2 / 3;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.chart-canvas-container {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    width: 100%;
+    height: 300px;
+    position: relative;
+    border-top: 1px solid #eee;
+    padding-top: 15px;
+}
+
+.chart-extra-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.custom-range-input { width: 60px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; }
+.auto-scale-wrapper { margin-left: 10px; display: flex; align-items: center; }
+.auto-scale-wrapper input { margin-right: 5px; }
+.auto-scale-wrapper label { font-size: 0.85rem; cursor: pointer; margin: 0; }
+
+/* Class untuk ikon berkedip */
+.blink-icon {
+    color: #ff6b6b;
+    font-size: 0.7em;
+    margin-right: 4px;
+    animation: blink 1.5s infinite;
+}
+
+/* Label Visibility (Desktop Default) */
+.label-short { display: none; }
+.label-long { display: inline; }
+
+/* Mobile Responsive for Chart */
+@media (max-width: 768px) {
+    .chart-card-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto; /* Title, Chart, Controls */
+        gap: 10px;
+    }
+
+    .chart-title {
+        grid-column: 1 / 2;
+        grid-row: 1;
+        text-align: center;
+        border-bottom: 1px solid #eee !important;
+        padding-bottom: 10px !important;
+    }
+
+    .chart-canvas-container {
+        grid-column: 1 / 2;
+        grid-row: 2; /* Chart di tengah */
+        border-top: none;
+        padding-top: 0;
+    }
+
+    .chart-controls-container {
+        grid-column: 1 / 2;
+        grid-row: 3; /* Controls di bawah */
+        flex-wrap: wrap;
+        justify-content: center;
+        width: 100%;
+    }
+
+    .chart-extra-tools {
+        margin-top: 5px;
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Shorten Labels on Mobile */
+    .label-long { display: none !important; }
+    .label-short { display: inline-block !important; }
+    
+    .chart-btn { padding: 5px 8px; font-size: 0.8rem; }
+
+    /* Pastikan tombol tidak terpotong di layar sangat kecil */
+    .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
+@keyframes blink { 50% { opacity: 0.5; } }

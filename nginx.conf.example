@@ -1,0 +1,44 @@
+server {
+    listen 80;
+    listen [::]:80;
+
+    # Sesuaikan dengan domain dan IP server Anda
+    server_name pamsimas.selur.my.id 192.168.12.13;
+
+    # Sesuaikan path ini dengan lokasi folder proyek Anda di server
+    # PENTING: Pastikan root mengarah ke folder 'public'
+    root /var/www/pamsimas.selur.my.id/public;
+
+    index index.php index.html index.htm;
+    charset utf-8;
+
+    # Logika Routing (Pretty URL) - Pengganti .htaccess
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Optimasi log untuk file statis umum
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    # Konfigurasi PHP-FPM
+    location ~ \.php$ {
+        # Sesuaikan path socket PHP-FPM dengan versi yang terinstall (misal: php8.1-fpm.sock)
+        fastcgi_pass unix:/run/php/php-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    # Keamanan: Blokir akses ke file sensitif (.env, .git, dll)
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Blokir akses ke file dengan ekstensi tertentu (opsional)
+    # Mencegah download file backup database (.sql) atau log (.log)
+    location ~ \.(env|sql|log|ini)$ {
+        deny all;
+    }
+}

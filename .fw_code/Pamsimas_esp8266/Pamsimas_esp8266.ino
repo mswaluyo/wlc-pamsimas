@@ -27,7 +27,7 @@ const char* pass = "p@msim45";             // Ganti dengan Password Wi-Fi Anda
 // --- Konfigurasi Server API ---
 const char* server_domain = "pamsimas.selur.my.id"; // PERBAIKAN: Domain server yang benar
 const int server_port = 443; // Port standar untuk HTTPS
-const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";                      // API Key harus SAMA PERSIS dengan yang di PHP
+const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";           // API Key harus SAMA PERSIS dengan yang di PHP
 const char* api_log_endpoint = "/api/log";                  // Sesuaikan dengan struktur URL di server live
 const char* api_status_endpoint = "/api/status";            // Sesuaikan dengan struktur URL di server live
 const char* api_offline_log_endpoint = "/api/log-offline";  // Sesuaikan dengan struktur URL di server live
@@ -57,6 +57,7 @@ struct DeviceConfig {
   int full_tank_distance;
   int empty_tank_distance;
   int trigger_percentage;
+  int min_run_time; // Tambahan: Waktu tunda/nyala minimal dalam detik
 };
 
 // --- Alamat EEPROM untuk menyimpan durasi ---
@@ -66,7 +67,7 @@ struct DeviceConfig {
 #define EEPROM_ADDR_TRIGGER_PER 12    // int (4 bytes)
 #define EEPROM_ADDR_MODE 16           // byte (1 byte) - Saat ini tidak digunakan
 #define EEPROM_ADDR_DEVICE_CONFIG 18  // Alamat untuk struct DeviceConfig
-#define EEPROM_ADDR_IS_REGISTERED 40  // Alamat untuk status pendaftaran (1 byte)
+#define EEPROM_ADDR_IS_REGISTERED 50  // GESER ALAMAT: Dari 40 ke 50 agar muat untuk struct baru
 #define EEPROM_SIZE 64                // Perbesar ukuran EEPROM untuk mengakomodasi struct
 // =================================================================
 // --- VARIABEL GLOBAL (JANGAN DIUBAH KECUALI ANDA TAHU APA YANG DILAKUKAN) ---
@@ -87,10 +88,16 @@ DeviceConfig config;
 
 // Variabel Status & Kontrol (State)
 bool relayStatus = false;      // Status relay terkini (dibaca dari pin)
+bool lastRelayStatus = false;  // Status relay sebelumnya untuk deteksi perubahan
 bool modeFlag = true;          // true = AUTO, false = MANUAL/TIMED
 char currMode[8] = "AUTO";     // Cukup untuk "MANUAL" atau "TIMED"
 bool isRegistered = false;     // Status pendaftaran perangkat
 bool versionReported = false;  // Flag untuk menandai apakah versi sudah dilaporkan
+
+// --- TAMBAHAN UNTUK DEBOUNCE SENSOR ---
+unsigned long sensorDebounceStartTime = 0;
+bool isDebouncing = false;
+int sensorDebounceDelay = 5; // Default 5 detik (nanti akan diupdate dari server)
 
 // Variabel untuk Buzzer Non-Blocking
 bool buzzerActive = false;
@@ -247,10 +254,14 @@ void loop() {
       
       // SINKRONISASI SETELAH KONEKSI PULIH
       syncTime(); // 1. Sinkronkan waktu terlebih dahulu.
+      delay(1000); // Jeda agar stack SSL stabil
       sendControlCommand("report_event", "network_recovered"); // 2. Laporkan bahwa koneksi telah pulih.
+      delay(1000); // Jeda
       // 3. PERBAIKAN LOGIKA: Laporkan mode 'AUTO' yang menjadi fallback ke server.
       sendControlCommand("set_mode", "AUTO"); 
+      delay(1000); // Jeda
       sendOfflineLogs(); // 4. Kirim semua log yang tersimpan saat offline.
+      delay(1000); // Jeda
       fetchControlStatus(); // 5. Ambil konfigurasi penuh dari server (mode sekarang sudah sinkron).
     }
   }
@@ -324,6 +335,11 @@ bool loadConfigFromEEPROM() {
     pumpOffDuration = 15 * 60 * 1000;
   }
 
+  // PERBAIKAN: Set default aman jika EEPROM kosong/korup agar logika tidak macet
+  if (config.trigger_percentage <= 0 || config.trigger_percentage > 100) config.trigger_percentage = 70;
+  if (config.full_tank_distance <= 0) config.full_tank_distance = 30;
+  if (config.empty_tank_distance <= 0) config.empty_tank_distance = 100;
+  
   Serial.printf("Durasi dari EEPROM: Nyala=%ld ms, Mati=%ld ms\n", pumpOnDuration, pumpOffDuration);
 
   if (EEPROM.read(EEPROM_ADDR_IS_REGISTERED) == 1) {
@@ -477,12 +493,13 @@ void fetchControlStatus() {
 
     int httpResponseCode = http.GET();
     if (httpResponseCode == 200) {
-      StaticJsonDocument<512> doc;
-      DeserializationError error = deserializeJson(doc, http.getStream());
+      String payload = http.getString();
+      StaticJsonDocument<1024> doc;
+      DeserializationError error = deserializeJson(doc, payload);
 
       if (error) {
         Serial.println("--- Respons Gagal Parsing ---");
-        Serial.println(http.getString());
+        Serial.println(payload);
         Serial.println("---------------------------");
         Serial.print("deserializeJson() gagal: ");
         Serial.println(error.c_str());
@@ -533,10 +550,21 @@ void fetchControlStatus() {
 
       DeviceConfig newConfig;
       newConfig.on_duration_minutes = doc["on_duration"];
+      // PERBAIKAN: Validasi durasi nyala agar tidak 0 atau negatif (Default 5 menit)
+      if (newConfig.on_duration_minutes <= 0) newConfig.on_duration_minutes = 5;
+
       newConfig.off_duration_minutes = doc["off_duration"].as<int>();
       newConfig.full_tank_distance = doc["full_tank_distance"];
       newConfig.trigger_percentage = doc["trigger_percentage"];
       newConfig.empty_tank_distance = doc["empty_tank_distance"];
+      
+      if (doc.containsKey("sensor_debounce")) {
+        sensorDebounceDelay = doc["sensor_debounce"];
+      }
+      
+      // Ambil konfigurasi Minimum Run Time (Waktu Tunda) dari server
+      // Default ke 60 detik jika tidak dikirim server
+      newConfig.min_run_time = doc.containsKey("min_run_time") ? doc["min_run_time"] : 60;
 
       Serial.println("  [KONFIGURASI DARI SERVER]");
       Serial.printf("    - Durasi Nyala: %d menit\n", newConfig.on_duration_minutes);
@@ -544,6 +572,7 @@ void fetchControlStatus() {
       Serial.printf("    - Jarak Penuh: %d cm\n", newConfig.full_tank_distance);
       Serial.printf("    - Jarak Kosong: %d cm\n", newConfig.empty_tank_distance);
       Serial.printf("    - Pemicu Pompa: %d %%\n", newConfig.trigger_percentage);
+      Serial.printf("    - Min Run Time: %d detik\n", newConfig.min_run_time);
 
       Serial.println("\n  [KONFIGURASI LOKAL SAAT INI]");
       Serial.printf("    - Durasi Nyala: %d menit\n", config.on_duration_minutes);
@@ -696,32 +725,46 @@ void sendControlCommand(const char* action, const char* value) {
     return;
   }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_update_endpoint);
+  // PERBAIKAN: Tambahkan mekanisme Retry (3x percobaan) untuk stabilitas
+  for (int attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      Serial.printf("[HTTP] Retry ke-%d mengirim perintah '%s'...\n", attempt, action);
+      delay(1000); // Tunggu 1 detik sebelum mencoba lagi
+    }
 
-  if (http.begin(client, serverPath)) {
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-API-Key", api_key); // PERBAIKAN: Tambahkan header API Key yang hilang
-    StaticJsonDocument<200> doc;
-    doc["mac"] = deviceMacAddress;
-    doc["action"] = action;
-    doc["value"] = value;
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    char serverPath[128];
+    snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_update_endpoint);
 
-    String requestBody;
-    serializeJson(doc, requestBody);
-    int httpResponseCode = http.POST(requestBody);
-    if (httpResponseCode > 0 && httpResponseCode < 400) {
-      Serial.printf("[HTTP] Perintah '%s' -> '%s' dikirim, kode: %d\n", action, value, httpResponseCode);
-    } else {
-      Serial.printf("[HTTP] Gagal mengirim perintah '%s'\n", action);
-      if (strcmp(action, "set_status") == 0) {
-        logPumpStatusOffline(strcmp(value, "ON") == 0);
+    if (http.begin(client, serverPath)) {
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("X-API-Key", api_key);
+      StaticJsonDocument<200> doc;
+      doc["mac"] = deviceMacAddress;
+      doc["action"] = action;
+      doc["value"] = value;
+
+      String requestBody;
+      serializeJson(doc, requestBody);
+      int httpResponseCode = http.POST(requestBody);
+      
+      http.end(); // Tutup koneksi segera
+
+      if (httpResponseCode > 0 && httpResponseCode < 400) {
+        Serial.printf("[HTTP] Perintah '%s' -> '%s' dikirim, kode: %d\n", action, value, httpResponseCode);
+        return; // Berhasil, keluar dari fungsi
+      } else {
+        Serial.printf("[HTTP] Gagal mengirim perintah (Kode: %d)\n", httpResponseCode);
       }
     }
-    http.end();
+  }
+
+  // Jika sampai sini berarti gagal total setelah 3x percobaan
+  Serial.printf("[HTTP] Gagal total mengirim perintah '%s'.\n", action);
+  if (strcmp(action, "set_status") == 0) {
+    logPumpStatusOffline(strcmp(value, "ON") == 0);
   }
 }
 
@@ -736,105 +779,99 @@ void sendOfflineLogs() {
 
   Serial.println("Membaca log offline untuk dikirim ke server...");
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_offline_log_endpoint);
+  // Konstruksi payload JSON secara manual dalam String
+  // Catatan: Ini menggunakan RAM. Jika log sangat besar, pertimbangkan mengirim per bagian.
+  String payload = "{\"mac_address\":\"" + String(deviceMacAddress) + "\"";
 
-  // PERBAIKAN: Gunakan metode streaming untuk mengirim data besar tanpa menghabiskan memori.
-  if (http.begin(client, serverPath)) {
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-API-Key", api_key);
-
-    // Mulai mengirim request dengan payload chunked
-    int httpResponseCode = http.sendRequest("POST", (uint8_t*)"", 0);
-    if (httpResponseCode != HTTP_CODE_CONTINUE) {
-        http.end();
-        Serial.printf("[HTTP] Gagal memulai streaming, kode: %d\n", httpResponseCode);
-        return;
-    }
-
-    // Buat JSON secara bertahap dan kirim langsung ke client
-    client.print("{\"mac_address\":\"");
-    client.print(deviceMacAddress);
-    client.print("\"");
-
-    if (hasSensorLogs) {
-        client.print(",\"sensor_logs\":[");
-        File sensorFile = LittleFS.open("/sensor_log.txt", "r");
-        bool first = true;
-        while(sensorFile.available()){
-            String line = sensorFile.readStringUntil('\n');
-            line.trim();
-            if(line.length() > 0){
-                if(!first) client.print(",");
-                client.print("[");
-                client.print(line);
-                client.print("]");
-                first = false;
-            }
+  if (hasSensorLogs) {
+    payload += ",\"sensor_logs\":[";
+    File file = LittleFS.open("/sensor_log.txt", "r");
+    if (file) {
+      bool first = true;
+      while (file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+          if (!first) payload += ",";
+          payload += "[" + line + "]";
+          first = false;
         }
-        client.print("]");
-        sensorFile.close();
+      }
+      file.close();
     }
+    payload += "]";
+  }
 
-    if (hasPumpLogs) {
-        client.print(",\"pump_logs\":[");
-        File pumpFile = LittleFS.open("/pump_log.txt", "r");
-        bool first = true;
-        while(pumpFile.available()){
-            String line = pumpFile.readStringUntil('\n');
-            line.trim();
-            if(line.length() > 0){
-                if(!first) client.print(",");
-                client.print("[");
-                client.print(line);
-                client.print("]");
-                first = false;
-            }
+  if (hasPumpLogs) {
+    payload += ",\"pump_logs\":[";
+    File file = LittleFS.open("/pump_log.txt", "r");
+    if (file) {
+      bool first = true;
+      while (file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+          if (!first) payload += ",";
+          payload += "[" + line + "]";
+          first = false;
         }
-        client.print("]");
-        pumpFile.close();
+      }
+      file.close();
     }
+    payload += "]";
+  }
 
-    if (hasEventLogs) {
-        client.print(",\"event_logs\":[");
-        File eventFile = LittleFS.open("/event_log.txt", "r");
-        bool first = true;
-        while(eventFile.available()){
-            String line = eventFile.readStringUntil('\n');
-            line.trim();
-            if(line.length() > 0){
-                if(!first) client.print(",");
-                client.print("[\"");
-                client.print(line);
-                client.print("\"]");
-                first = false;
-            }
+  if (hasEventLogs) {
+    payload += ",\"event_logs\":[";
+    File file = LittleFS.open("/event_log.txt", "r");
+    if (file) {
+      bool first = true;
+      while (file.available()) {
+        String line = file.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+          if (!first) payload += ",";
+          payload += "[\"" + line + "\"]";
+          first = false;
         }
-        client.print("]");
-        eventFile.close();
+      }
+      file.close();
+    }
+    payload += "]";
+  }
+
+  payload += "}";
+
+  // PERBAIKAN: Tambahkan mekanisme Retry (2x percobaan) untuk log offline
+  for (int attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      Serial.println("[HTTP] Retry mengirim log offline...");
+      delay(2000);
     }
 
-    client.print("}");
-    
-    // PERBAIKAN KRUSIAL: Cara yang benar untuk menyelesaikan request streaming.
-    // Hentikan penulisan ke client, yang akan mengirimkan chunk terakhir.
-    client.stop();
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    char serverPath[128];
+    snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_offline_log_endpoint);
 
-    // Sekarang, dapatkan kode status HTTP yang sebenarnya dari server.
-    httpResponseCode = http.getStream().read(); // Ini akan menunggu respons dan mendapatkan kodenya.
+    if (http.begin(client, serverPath)) {
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("X-API-Key", api_key);
 
-    if (httpResponseCode == 200) {
-      Serial.println("Log offline berhasil dikirim. Menghapus file log lokal.");
-      if (hasSensorLogs) LittleFS.remove("/sensor_log.txt");
-      if (hasPumpLogs) LittleFS.remove("/pump_log.txt");
-      if (hasEventLogs) LittleFS.remove("/event_log.txt");
-    } else {
-      Serial.printf("[HTTP] Gagal mengirim log offline, kode: %d\n", httpResponseCode);
+      int httpResponseCode = http.POST(payload);
+      http.end();
+
+      if (httpResponseCode == 200) {
+        Serial.println("Log offline berhasil dikirim. Menghapus file log lokal.");
+        if (hasSensorLogs) LittleFS.remove("/sensor_log.txt");
+        if (hasPumpLogs) LittleFS.remove("/pump_log.txt");
+        if (hasEventLogs) LittleFS.remove("/event_log.txt");
+        return; // Berhasil
+      } else {
+        Serial.printf("[HTTP] Gagal mengirim log offline, kode: %d\n", httpResponseCode);
+      }
     }
-    http.end();
   }
 }
 
@@ -890,7 +927,8 @@ void measureAndSendData() {
 
 void runUniversalPumpLogic() {
   if (relayStatus && (millis() - pumpStartTime >= pumpOnDuration)) {
-    Serial.println("LOGIKA: [KEAMANAN] Durasi nyala maksimum tercapai. Mematikan pompa.");
+    Serial.printf("LOGIKA: [KEAMANAN] Durasi nyala maksimum tercapai. (Elapsed: %lu ms, Limit: %ld ms)\n", millis() - pumpStartTime, pumpOnDuration);
+    sendControlCommand("report_event", "Pompa Mati: Durasi Maksimum Tercapai");
     sendControlCommand("set_status", "OFF");
     relayStatus = false;
     isCoolingDown = true;
@@ -900,6 +938,7 @@ void runUniversalPumpLogic() {
       Serial.println("LOGIKA: [KEAMANAN] Menandai untuk melanjutkan pengisian setelah istirahat.");
     }
     controlBuzzer(1000);
+    handlePumpStateChange(); // PERBAIKAN: Pastikan status relay diperbarui dan disinkronkan sebelum return
     return;
   }
 
@@ -912,10 +951,26 @@ void runUniversalPumpLogic() {
     }
   }
 
+  // DEBUGGING: Cetak status logika AUTO setiap 5 detik jika pompa mati tapi level rendah
+  static unsigned long lastDebugLog = 0;
+  if (millis() - lastDebugLog > 5000) {
+    lastDebugLog = millis();
+    if (strcmp(currMode, "AUTO") == 0 && !relayStatus && waterLevelPer < config.trigger_percentage) {
+       Serial.printf("DEBUG AUTO: Level=%d%%, Trigger=%d%%, Relay=%d (OFF). Menunggu siklus berikutnya...\n", waterLevelPer, config.trigger_percentage, relayStatus);
+    }
+  }
+
   if (strcmp(currMode, "AUTO") == 0) {
+    // Reset debounce jika level air turun di bawah ambang batas penuh (misal < 98%)
+    if (waterLevelPer < 98 && isDebouncing) {
+      Serial.println("LOGIKA: [AUTO] Level air turun (bukan penuh). Debounce di-reset.");
+      isDebouncing = false;
+    }
+
     if (isResumingFill && !relayStatus) {
       Serial.println("LOGIKA: [AUTO] Melanjutkan pengisian setelah istirahat...");
       relayStatus = true;
+      pumpStartTime = millis(); // PERBAIKAN: Reset timer secara eksplisit saat menyalakan pompa
       sendControlCommand("set_status", "ON");
       isResumingFill = false;
       controlBuzzer(200);
@@ -923,16 +978,41 @@ void runUniversalPumpLogic() {
     else if (waterLevelPer < config.trigger_percentage && !relayStatus) {
       Serial.println("LOGIKA: [AUTO] Level air rendah, menyalakan pompa.");
       relayStatus = true;
+      pumpStartTime = millis(); // PERBAIKAN: Reset timer secara eksplisit saat menyalakan pompa
       sendControlCommand("set_status", "ON");
       controlBuzzer(500);
     } else if (waterLevelPer >= 98 && relayStatus) {
-      Serial.println("AUTO: Tangki penuh, mematikan pompa.");
-      relayStatus = false;
-      isCoolingDown = true;
-      coolDownStartTime = millis();
-      sendControlCommand("set_status", "OFF");
-      controlBuzzer(500);
-      isResumingFill = false;
+      
+      // --- LOGIKA BARU: Minimum Run Time (Anti-Short Cycle) ---
+      // Menggunakan nilai dari konfigurasi EEPROM/Server
+      long minRunTimeMs = (long)config.min_run_time * 1000;
+      
+      if (millis() - pumpStartTime < minRunTimeMs) {
+        Serial.printf("LOGIKA: [AUTO] Sensor penuh, tapi diabaikan (Minimum Run Time %d detik belum tercapai).\n", config.min_run_time);
+        isDebouncing = false; // Reset debounce agar tidak menumpuk
+        return; // Keluar dari fungsi, biarkan pompa tetap nyala
+      }
+
+      // Implementasi Debounce
+      if (!isDebouncing) {
+        isDebouncing = true;
+        sensorDebounceStartTime = millis();
+        Serial.println("LOGIKA: [AUTO] Terdeteksi penuh, memverifikasi gelombang...");
+      } else {
+        if (millis() - sensorDebounceStartTime > (sensorDebounceDelay * 1000)) {
+          Serial.println("AUTO: Tangki penuh (Stabil), mematikan pompa.");
+          relayStatus = false;
+          isCoolingDown = true;
+          coolDownStartTime = millis();
+          char eventMsg[64];
+          // Sertakan level air yang terdeteksi saat mematikan pompa untuk bukti
+          snprintf(eventMsg, sizeof(eventMsg), "Pompa Mati: Tangki Penuh (Auto) - Terdeteksi %d%%", waterLevelPer);
+          sendControlCommand("report_event", eventMsg);
+          sendControlCommand("set_status", "OFF");
+          controlBuzzer(500);
+          isResumingFill = false;
+        }
+      }
     }
   } else if (strcmp(currMode, "TIMED") == 0) {
     if (relayStatus) {
@@ -945,6 +1025,7 @@ void runUniversalPumpLogic() {
       if (millis() - pumpStartTime >= pumpOffDuration) {
         Serial.println("LOGIKA: [TIMED] Durasi mati selesai, menyalakan pompa.");
         relayStatus = true;
+        pumpStartTime = millis(); // PERBAIKAN: Reset timer secara eksplisit saat menyalakan pompa
         sendControlCommand("set_status", "ON");
       }
     }
@@ -966,20 +1047,18 @@ void sendCommandAndBuzz(const char* action, const char* value, int buzzerDuratio
 }
 
 void handlePumpStateChange() {
-  bool currentPinState = digitalRead(RelayPin);
-
-  if (relayStatus && !currentPinState) {
-    digitalWrite(RelayPin, HIGH);
-    pumpStartTime = millis();
-    Serial.println("RELAY: Pin relay diaktifkan (HIGH), timer keamanan dimulai.");
-    // DEBUGGING: Tampilkan status saat ini
-    Serial.printf("  -> DEBUG: Mode Saat Ini = %s, Status Pompa = ON\n", currMode);
-  }
-  else if (!relayStatus && currentPinState) {
-    digitalWrite(RelayPin, LOW);
-    Serial.println("RELAY: Pin relay dinonaktifkan (LOW).");
-    // DEBUGGING: Tampilkan status saat ini
-    Serial.printf("  -> DEBUG: Mode Saat Ini = %s, Status Pompa = OFF\n", currMode);
+  if (relayStatus != lastRelayStatus) {
+    if (relayStatus) {
+      digitalWrite(RelayPin, HIGH);
+      pumpStartTime = millis();
+      Serial.println("RELAY: Pin relay diaktifkan (HIGH), timer keamanan dimulai.");
+      Serial.printf("  -> DEBUG: Mode Saat Ini = %s, Status Pompa = ON\n", currMode);
+    } else {
+      digitalWrite(RelayPin, LOW);
+      Serial.println("RELAY: Pin relay dinonaktifkan (LOW).");
+      Serial.printf("  -> DEBUG: Mode Saat Ini = %s, Status Pompa = OFF\n", currMode);
+    }
+    lastRelayStatus = relayStatus;
   }
 }
 

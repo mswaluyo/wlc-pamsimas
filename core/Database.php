@@ -41,11 +41,23 @@ class Database {
             if (ob_get_level()) {
                 ob_end_clean();
             }
-            // Pada lingkungan produksi, sebaiknya log error ini, bukan menampilkannya.
-            // Alih-alih membuat crash, kirim respons error 503 Service Unavailable.
+            
+            // Deteksi apakah request adalah API atau Web biasa
+            $isApi = (isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], '/api/') !== false) 
+                     || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
+
             http_response_code(503);
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Database Error: ' . $e->getMessage()]);
+            
+            if ($isApi) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => 'Database Error: ' . $e->getMessage()]);
+            } else {
+                // Tampilan Error HTML Sederhana untuk User Web
+                echo '<div style="font-family: sans-serif; text-align: center; padding: 50px;">';
+                echo '<h1>Layanan Tidak Tersedia</h1>';
+                echo '<p>Maaf, sistem sedang mengalami gangguan koneksi database.</p>';
+                echo '</div>';
+            }
             exit(); // Hentikan eksekusi skrip dengan anggun.
         }
     }

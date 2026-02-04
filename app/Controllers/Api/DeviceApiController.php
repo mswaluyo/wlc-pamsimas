@@ -11,9 +11,22 @@ use app\Models\DetectedDevice;
 class DeviceApiController {
 
     /**
+     * Inisialisasi Controller
+     */
+    public function __construct() {
+        $timezone = $_ENV['TIMEZONE'] ?? getenv('TIMEZONE') ?? 'Asia/Jakarta';
+        date_default_timezone_set($timezone);
+    }
+
+    /**
      * Helper: Memvalidasi API Key dari header request.
      */
     private function validateApiKey() {
+        // PERBAIKAN: Bypass validasi jika request berasal dari Administrator yang sudah login (Web Dashboard)
+        if (isset($_SESSION['user']) && $_SESSION['user']['role'] === 'Administrator') {
+            return;
+        }
+
         $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? null;
         // Ambil dari .env atau gunakan default yang sama dengan firmware
         $serverKey = $_ENV['DEVICE_API_KEY'] ?? $_SERVER['DEVICE_API_KEY'] ?? getenv('DEVICE_API_KEY') ?: 'P4mS1m4s-T1rt0-Arg0-2025'; 
@@ -97,6 +110,15 @@ class DeviceApiController {
                 'last_update' => date('Y-m-d H:i:s')
             ]);
 
+            // --- UPDATE AGGREGATION TABLES ---
+            $this->updateAggregatedLogs($controller['id'], $data['water_level_cm'] ?? 0.0, $data['water_percentage'] ?? null, $data['rssi'] ?? null);
+
+            // --- AUTO CLEANUP: Hapus log pompa lama (> 30 hari) ---
+            // Dijalankan dengan probabilitas 1% setiap kali ada data masuk untuk menghemat resource
+            if (rand(1, 100) === 1) {
+                PumpLog::cleanupOldLogs(30);
+            }
+
         } catch (\PDOException $e) {
             http_response_code(500); // Internal Server Error
             echo json_encode(['error' => 'Database operation failed.']);
@@ -130,10 +152,25 @@ class DeviceApiController {
             return;
         }
 
+        // PERBAIKAN: Update 'last_update' setiap kali perangkat melakukan polling status (Heartbeat).
+        // Ini memastikan perangkat tetap dianggap "Online" di dashboard meskipun interval kirim data sensornya lama.
+        Controller::update($controller['id'], [
+            'last_update' => date('Y-m-d H:i:s')
+        ]);
+
         // Bersihkan buffer output untuk mencegah karakter tambahan merusak JSON
         if (ob_get_level()) ob_clean();
 
         header('Content-Type: application/json');
+
+        // --- LOGIKA BARU: Ambil Waktu Tunda (delay_seconds) dari tabel Pumps ---
+        $minRunTime = 185; // Default fallback jika data pompa tidak ditemukan
+        if (!empty($controller['pump_id'])) {
+            $pump = \app\Models\Pump::findById($controller['pump_id']);
+            if ($pump && isset($pump['delay_seconds'])) {
+                $minRunTime = (int)$pump['delay_seconds'];
+            }
+        }
 
         // PERBAIKAN: Kirim hanya data yang relevan untuk status singkat dan lengkap.
         // Ini memastikan bendera perintah selalu disertakan.
@@ -150,7 +187,9 @@ class DeviceApiController {
             'off_duration' => (int)($controller['off_duration'] ?? 15),
             'full_tank_distance' => (int)($controller['full_tank_distance'] ?? 30),
             'empty_tank_distance' => (int)($controller['empty_tank_distance'] ?? 100),
-            'trigger_percentage' => (int)($controller['trigger_percentage'] ?? 70)
+            'trigger_percentage' => (int)($controller['trigger_percentage'] ?? 70),
+            'sensor_debounce' => 5, // Default 5 detik untuk menahan gelombang air
+            'min_run_time' => $minRunTime // Menggunakan nilai dari database (tabel pumps)
         ];
 
         echo json_encode($responseData);
@@ -185,7 +224,10 @@ class DeviceApiController {
             return;
         }
 
-        $updateData = [];
+        // PERBAIKAN: Selalu perbarui last_update setiap kali perangkat melapor (via /api/update)
+        // Ini mencegah status berkedip jadi "Offline" saat perangkat sibuk memproses perintah.
+        $updateData = ['last_update' => date('Y-m-d H:i:s')];
+
         switch ($action) {
             case 'set_mode':
                 $updateData['control_mode'] = $value;
@@ -195,7 +237,11 @@ class DeviceApiController {
                 break;
             case 'set_status':
                 $updateData['status'] = $value;
-                PumpLog::create($controller['id'], ($value === 'ON'));
+                // PERBAIKAN: Hanya catat log jika status benar-benar berubah untuk mencegah spam log
+                // yang menyebabkan timer durasi di dashboard ter-reset terus menerus (0, 1, 0...).
+                if ($controller['status'] !== $value) {
+                    PumpLog::create($controller['id'], ($value === 'ON'));
+                }
                 break;
             case 'report_version':
                 $updateData['firmware_version'] = $value;
@@ -239,9 +285,9 @@ class DeviceApiController {
                 break;
         }
 
-        if (!empty($updateData)) {
-            Controller::update($controller['id'], $updateData);
-        }
+        // Jalankan update (minimal akan mengupdate last_update)
+        Controller::update($controller['id'], $updateData);
+
         // PERBAIKAN: Setelah perangkat mengambil perintah mode, reset benderanya.
         if ($action === 'reset_mode_update') {
             Controller::update($controller['id'], ['mode_update_command' => 0]);
@@ -296,6 +342,10 @@ class DeviceApiController {
                         // PERBAIKAN: Jika timestamp adalah 0, gunakan waktu server saat ini.
                         'record_time' => ($log[0] == 0) ? date('Y-m-d H:i:s') : date('Y-m-d H:i:s', $log[0])
                     ]);
+
+                    // Update Aggregation Tables untuk log offline juga
+                    $recordTime = ($log[0] == 0) ? date('Y-m-d H:i:s') : date('Y-m-d H:i:s', $log[0]);
+                    $this->updateAggregatedLogs($controller_id, $log[2], $log[1], $log[3], $recordTime);
                 }
             }
         }
@@ -361,6 +411,13 @@ class DeviceApiController {
      * Menyediakan data lengkap untuk live update dashboard.
      */
     public function getDashboardData() {
+        // PERBAIKAN: Pastikan hanya user yang sudah login yang bisa mengambil data dashboard
+        if (!isset($_SESSION['user'])) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
         // Logika ini diambil dari DashboardController
         $controllers = \app\Models\Controller::getAll();
         $tanks = \app\Models\Tank::getAll();
@@ -371,9 +428,29 @@ class DeviceApiController {
         
         // Gunakan referensi (&) agar kita bisa menambahkan flag is_online ke array asli
         foreach ($controllers as &$controller) {
-            // Ubah batas waktu online menjadi 60 detik (1 menit)
-            $isOnline = (strtotime($controller['last_update']) > (time() - 60));
+            // PERBAIKAN: Tingkatkan toleransi menjadi 120 detik (2 menit) untuk mencegah flicker status
+            $isOnline = (strtotime($controller['last_update']) > (time() - 120));
             $controller['is_online'] = $isOnline; // Kirim status ini ke frontend
+
+            // Hitung durasi status pompa saat ini (detik)
+            $lastLogTime = \app\Models\PumpLog::getLastLogTime($controller['id']);
+            
+            // Fix Timezone: Pastikan parsing waktu sesuai konfigurasi .env agar durasi akurat
+            $ts = 0;
+            if ($lastLogTime) {
+                try {
+                    $timezone = $_ENV['TIMEZONE'] ?? 'Asia/Jakarta';
+                    $dt = new \DateTime($lastLogTime, new \DateTimeZone($timezone));
+                    $ts = $dt->getTimestamp();
+                } catch (\Exception $e) {
+                    $ts = strtotime($lastLogTime);
+                }
+            }
+            
+            $controller['last_pump_change_timestamp'] = $ts; // Kirim timestamp absolut
+            
+            $duration = $ts ? (time() - $ts) : 0;
+            $controller['current_pump_duration'] = max(0, $duration); // Cegah nilai negatif
             
             if ($isOnline) {
                 $onlineControllers++;
@@ -382,6 +459,8 @@ class DeviceApiController {
         unset($controller); // Hapus referensi
 
         $data = [
+            'server_time' => date('d M Y, H:i:s'), // Kirim waktu server saat ini
+            'server_timestamp' => time(), // Kirim timestamp server untuk sinkronisasi
             'stats' => [
                 'total_controllers' => $totalControllers,
                 'online_controllers' => $onlineControllers,
@@ -459,7 +538,7 @@ class DeviceApiController {
         }
 
         $controller_id = $_GET['id'] ?? null;
-        $range_minutes = $_GET['range'] ?? 60; // Default 1 jam
+        $range_minutes = (int)($_GET['range'] ?? 60); // Default 1 jam
 
         if (!$controller_id) {
             http_response_code(400);
@@ -470,41 +549,90 @@ class DeviceApiController {
         try {
             $pdo = \Database::getInstance()->getConnection();
             
-            // Ambil data berdasarkan rentang waktu
-            $sql = "SELECT record_time, water_level, water_percentage 
-                    FROM sensor_logs 
-                    WHERE controller_id = :id 
-                    AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) 
-                    ORDER BY record_time ASC";
-            
-            // Batasi jumlah titik data jika rentang waktu sangat besar agar browser tidak berat
-            if ($range_minutes > 1440) { 
-                 $sql .= " LIMIT 2000"; 
-            }
+            // PERBAIKAN: Hitung waktu mulai menggunakan PHP untuk menghindari masalah Timezone MySQL vs PHP
+            $startTime = date('Y-m-d H:i:s', strtotime("-{$range_minutes} minutes"));
 
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([':id' => $controller_id, ':range' => $range_minutes]);
-            $sensorData = $stmt->fetchAll();
+            // --- LOGIKA ADAPTIF: Raw vs Aggregated ---
+            // Jika menggunakan tabel agregasi (minute/hourly), kita harus menghitung persentase
+            // secara manual karena tabel tersebut tidak memiliki kolom 'water_percentage'.
+            
+            // PERBAIKAN: Gunakan data agregasi untuk rentang > 10 menit (misal 30m, 1 jam) agar loading cepat.
+            // Live (5 menit) tetap menggunakan data RAW agar halus.
+            if ($range_minutes > 10) {
+                // --- MODE AGREGASI (Data Lama) ---
+                // 1. Tentukan tabel dan kolom waktu
+                if ($range_minutes >= 1440) {
+                    $tableName = 'hourly_sensor_logs';
+                    $timeCol = 'hour_timestamp';
+                } else {
+                    $tableName = 'minute_sensor_logs';
+                    $timeCol = 'minute_timestamp';
+                }
+
+                // 2. Ambil konfigurasi tangki untuk perhitungan persentase
+                $controller = Controller::findById($controller_id);
+                $emptyDist = (float)($controller['empty_tank_distance'] ?? 100);
+                $fullDist = (float)($controller['full_tank_distance'] ?? 30);
+
+                // 3. Query data (Hanya ambil rata-rata level air dalam cm)
+                $sql = "SELECT {$timeCol} as record_time, avg_water_level as water_level 
+                        FROM {$tableName} 
+                        WHERE controller_id = :id 
+                        AND {$timeCol} >= :start_time 
+                        ORDER BY {$timeCol} ASC LIMIT 5000";
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([':id' => $controller_id, ':start_time' => $startTime]);
+                $rawData = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+                // 4. Hitung persentase di PHP
+                $sensorData = [];
+                foreach ($rawData as $row) {
+                    $levelCm = (float)$row['water_level'];
+                    // Rumus: ((Kosong - Sekarang) / (Kosong - Penuh)) * 100
+                    $pct = 0;
+                    if ($emptyDist != $fullDist) {
+                        $pct = 100 * ($emptyDist - $levelCm) / ($emptyDist - $fullDist);
+                        $pct = max(0, min(100, round($pct))); // Batasi 0-100
+                    }
+                    
+                    $sensorData[] = [
+                        'record_time' => $row['record_time'],
+                        'water_level' => $levelCm,
+                        'water_percentage' => $pct
+                    ];
+                }
+            } else {
+                // --- MODE RAW (Live / < 1 Jam) ---
+                // Tabel sensor_logs memiliki kolom water_percentage, jadi langsung ambil saja.
+                $sql = "SELECT record_time, water_level, water_percentage 
+                        FROM sensor_logs 
+                        WHERE controller_id = :id 
+                        AND record_time >= :start_time 
+                        ORDER BY record_time ASC LIMIT 5000";
+                
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([':id' => $controller_id, ':start_time' => $startTime]);
+                $sensorData = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            }
 
             // Ambil data status pompa dengan penanganan error (Try-Catch)
             $pumpData = [];
             try {
-                // Coba gunakan 'record_time' (konsisten dengan sensor_logs)
-                $sqlPump = "SELECT record_time, status FROM pump_logs WHERE controller_id = :id AND record_time >= DATE_SUB(NOW(), INTERVAL :range MINUTE) ORDER BY record_time ASC";
+                // PERBAIKAN: Gunakan nama kolom yang benar (timestamp, pump_status)
+                // Alias ke record_time dan status agar kompatibel dengan JavaScript
+                $sqlPump = "SELECT timestamp as record_time, pump_status as status, duration_seconds 
+                            FROM pump_logs 
+                            WHERE controller_id = :id 
+                            AND timestamp >= :start_time 
+                            ORDER BY timestamp ASC";
+                            
                 $stmtPump = $pdo->prepare($sqlPump);
-                $stmtPump->execute([':id' => $controller_id, ':range' => $range_minutes]);
+                $stmtPump->execute([':id' => $controller_id, ':start_time' => $startTime]);
                 $pumpData = $stmtPump->fetchAll();
             } catch (\Exception $e) {
-                // Fallback: Jika gagal, coba gunakan 'created_at'
-                try {
-                    $sqlPump = "SELECT created_at as record_time, status FROM pump_logs WHERE controller_id = :id AND created_at >= DATE_SUB(NOW(), INTERVAL :range MINUTE) ORDER BY created_at ASC";
-                    $stmtPump = $pdo->prepare($sqlPump);
-                    $stmtPump->execute([':id' => $controller_id, ':range' => $range_minutes]);
-                    $pumpData = $stmtPump->fetchAll();
-                } catch (\Exception $ex) {
-                    // Jika masih gagal (tabel tidak ada?), biarkan array kosong agar grafik utama tetap jalan
-                    $pumpData = [];
-                }
+                // Jika gagal, biarkan array kosong agar grafik utama tetap jalan
+                $pumpData = [];
             }
 
             header('Content-Type: application/json');
@@ -514,5 +642,62 @@ class DeviceApiController {
             header('Content-Type: application/json');
             echo json_encode(['error' => 'Server Error: ' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * Endpoint untuk mengambil event log terbaru untuk terminal monitoring.
+     */
+    public function getTerminalEvents() {
+        // Hanya izinkan user login (session) untuk keamanan
+        if (!isset($_SESSION['user'])) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
+
+        $limit = $_GET['limit'] ?? 50;
+        // Menggunakan model EventLog yang sudah di-use di atas
+        $events = EventLog::getPaginatedLogs((int)$limit, 0);
+        
+        header('Content-Type: application/json');
+        echo json_encode($events);
+    }
+
+    /**
+     * Helper: Memperbarui tabel agregasi (minute, hourly, daily) dengan teknik "Last Value".
+     * Ini memastikan tabel agregasi selalu terisi tanpa perlu cron job.
+     */
+    private function updateAggregatedLogs($controllerId, $waterLevel, $waterPercentage, $rssi, $recordTime = null) {
+        $pdo = \Database::getInstance()->getConnection();
+        $recordTime = $recordTime ?? date('Y-m-d H:i:s');
+        $timestamp = strtotime($recordTime);
+
+        // PERBAIKAN: Sesuaikan query dengan struktur tabel database yang ada (wlc_db.sql)
+        // Tabel agregasi hanya memiliki kolom: id, controller_id, avg_water_level, timestamp
+        // Kita TIDAK menyimpan water_percentage atau rssi di sini.
+
+        // 1. Minute Log
+        $minuteTime = date('Y-m-d H:i:00', $timestamp);
+        $sql = "INSERT INTO minute_sensor_logs (controller_id, minute_timestamp, avg_water_level) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE avg_water_level = VALUES(avg_water_level)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$controllerId, $minuteTime, $waterLevel]);
+
+        // 2. Hourly Log
+        $hourTime = date('Y-m-d H:00:00', $timestamp);
+        $sql = "INSERT INTO hourly_sensor_logs (controller_id, hour_timestamp, avg_water_level) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE avg_water_level = VALUES(avg_water_level)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$controllerId, $hourTime, $waterLevel]);
+
+        // 3. Daily Log (Kolom day_timestamp bertipe DATE)
+        $dayTime = date('Y-m-d', $timestamp);
+        $sql = "INSERT INTO daily_sensor_logs (controller_id, day_timestamp, avg_water_level) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE avg_water_level = VALUES(avg_water_level)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$controllerId, $dayTime, $waterLevel]);
     }
 }

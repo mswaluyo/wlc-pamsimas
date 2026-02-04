@@ -39,6 +39,42 @@ const progressiveAnimation = {
 };
 // -----------------------------------------------------------------------
 
+// --- Plugin Garis Horizontal Statis ---
+const horizontalLinesPlugin = {
+    id: 'horizontalLines',
+    afterDatasetsDraw(chart, args, options) {
+        const { ctx, chartArea: { top, right, bottom, left, width, height }, scales: { x, y } } = chart;
+        
+        if (!options || !Array.isArray(options.lines)) return;
+
+        ctx.save();
+        options.lines.forEach(line => {
+            const yValue = line.value;
+            const yPos = y.getPixelForValue(yValue);
+
+            // Hanya gambar jika garis berada dalam area chart (berguna saat di-zoom)
+            if (yPos >= top && yPos <= bottom) {
+                ctx.beginPath();
+                ctx.strokeStyle = line.color || 'rgba(0,0,0,0.5)';
+                ctx.lineWidth = line.width || 1;
+                if (line.dash) ctx.setLineDash(line.dash);
+                else ctx.setLineDash([]);
+                
+                ctx.moveTo(left, yPos);
+                ctx.lineTo(right, yPos);
+                ctx.stroke();
+
+                if (line.text) {
+                    ctx.fillStyle = line.color || 'rgba(0,0,0,0.5)';
+                    ctx.font = 'bold 11px sans-serif';
+                    ctx.fillText(line.text, left + 8, yPos - 6);
+                }
+            }
+        });
+        ctx.restore();
+    }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     const chartCanvas = document.getElementById('waterLevelChart');
     if (chartCanvas) {
@@ -50,6 +86,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initChart(canvas) {
     const ctx = canvas.getContext('2d');
+    const triggerLevel = parseFloat(canvas.getAttribute('data-trigger')) || 70; // Ambil nilai trigger
     
     // Gradien Biru Transparan
     const gradient = ctx.createLinearGradient(0, 0, 0, 400);
@@ -58,6 +95,7 @@ function initChart(canvas) {
 
     waterChart = new Chart(ctx, {
         type: 'line',
+        plugins: [horizontalLinesPlugin], // Register plugin lokal
         data: {
             labels: [],
             datasets: [{
@@ -93,10 +131,24 @@ function initChart(canvas) {
                 tooltip: {
                     callbacks: {
                         // Custom tooltip untuk status pompa
-                        label: (context) => context.dataset.type === 'bar' ? 
-                            (context.raw > 0 ? (context.element.options.backgroundColor === '#27ae60' ? 'Pompa: ON' : 'Pompa: OFF') : '') : 
-                            context.parsed.y + '%'
-                    }
+                        label: (context) => {
+                            if (context.dataset.type === 'bar') {
+                                const status = context.raw > 0 ? (context.element.options.backgroundColor === '#27ae60' ? 'ON' : 'OFF') : 'OFF';
+                                let label = `Pompa: ${status}`;
+                                const duration = context.dataset.pumpTooltips ? context.dataset.pumpTooltips[context.dataIndex] : null;
+                                if (duration) label += ` (${duration})`;
+                                return label;
+                            }
+                            return context.parsed.y + '%';
+                        }
+                    },
+                },
+                // Konfigurasi garis batas
+                horizontalLines: {
+                    lines: [
+                        { value: 100, color: '#27ae60', width: 2, dash: [5, 5], text: 'BATAS ATAS (100%)' },
+                        { value: triggerLevel, color: '#e67e22', width: 2, dash: [5, 5], text: `BATAS BAWAH (${triggerLevel}%)` }
+                    ]
                 }
             },
             scales: {
@@ -139,8 +191,8 @@ function setChartRange(range) {
         // Matikan animasi progressive agar update tiap detik lancar
         if(waterChart) waterChart.options.animation = false;
         
-        fetchChartData(60);
-        liveInterval = setInterval(() => fetchChartData(60), 1000);
+        fetchChartData(5); // Ubah rentang live menjadi 5 menit agar lebih fokus
+        liveInterval = setInterval(() => fetchChartData(5), 1000);
     } else {
         // --- MODE HISTORY ---
         // Hidupkan animasi progressive untuk efek visual yang keren
@@ -197,18 +249,50 @@ function updateChart(data) {
     // 3. Proses Data Status Pompa (Sinkronisasi Waktu)
     const pumpStatusData = [];
     const pumpColors = [];
+    const pumpTooltips = []; // Array untuk menyimpan data durasi
     let pumpIndex = 0;
-    let currentStatus = 0;
+    let currentStatus = 'OFF'; // Default status awal
+    let lastEventTime = null;
 
     sensorData.forEach(item => {
         const time = new Date(item.record_time).getTime();
         // Cari status pompa yang relevan dengan waktu sensor saat ini
         while(pumpIndex < pumpData.length && new Date(pumpData[pumpIndex].record_time).getTime() <= time) {
-            currentStatus = parseInt(pumpData[pumpIndex].status);
+            currentStatus = pumpData[pumpIndex].status;
             pumpIndex++;
+            lastEventTime = new Date(pumpData[pumpIndex - 1].record_time).getTime();
         }
         pumpStatusData.push(4); // Tinggi strip indikator
-        pumpColors.push(currentStatus == 1 ? '#27ae60' : '#e74c3c'); // Hijau/Merah
+        
+        // Cek status (handle string 'ON'/'OFF' atau angka 1/0)
+        const isOn = (String(currentStatus).toUpperCase() === 'ON' || currentStatus == 1);
+        pumpColors.push(isOn ? '#27ae60' : '#e74c3c'); // Hijau jika ON, Merah jika OFF
+    });
+    
+    // Reset index untuk loop kedua (penghitungan durasi)
+    pumpIndex = 0;
+    lastEventTime = null;
+    
+    sensorData.forEach(item => {
+        const time = new Date(item.record_time).getTime();
+        while(pumpIndex < pumpData.length && new Date(pumpData[pumpIndex].record_time).getTime() <= time) {
+            lastEventTime = new Date(pumpData[pumpIndex].record_time).getTime();
+            pumpIndex++;
+        }
+        
+        let durationStr = '';
+        // Jika ada event berikutnya, durasi status saat ini tersimpan di event tersebut
+        if (pumpIndex < pumpData.length) {
+            const nextEvent = pumpData[pumpIndex];
+            if (nextEvent.duration_seconds) {
+                durationStr = formatDuration(nextEvent.duration_seconds);
+            }
+        } else if (lastEventTime) {
+            // Jika ini status terakhir (sedang berjalan), hitung selisih waktu
+            const elapsed = Math.floor((time - lastEventTime) / 1000);
+            if (elapsed >= 0) durationStr = formatDuration(elapsed);
+        }
+        pumpTooltips.push(durationStr);
     });
 
     // 4. Update Grafik
@@ -216,6 +300,39 @@ function updateChart(data) {
     waterChart.data.datasets[0].data = values;
     waterChart.data.datasets[1].data = pumpStatusData;
     waterChart.data.datasets[1].backgroundColor = pumpColors;
+    waterChart.data.datasets[1].pumpTooltips = pumpTooltips; // Simpan ke dataset
     
+    waterChart.update();
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    
+    let parts = [];
+    if (h > 0) parts.push(`${h}j`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}d`);
+    
+    return parts.join(' ');
+}
+
+/**
+ * Mengubah mode skala Y antara Auto (Zoom) dan Fixed (0-100%)
+ */
+function toggleAutoScale(isAuto) {
+    if (!waterChart) return;
+    
+    if (isAuto) {
+        delete waterChart.options.scales.y.min;
+        delete waterChart.options.scales.y.max;
+        waterChart.options.scales.y.grace = '5%';
+    } else {
+        waterChart.options.scales.y.min = 0;
+        waterChart.options.scales.y.max = 100;
+        delete waterChart.options.scales.y.grace;
+    }
     waterChart.update();
 }

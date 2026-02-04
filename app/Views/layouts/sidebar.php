@@ -80,6 +80,12 @@
                     <span>Riwayat Pompa</span>
                 </a>
             </li>
+            <li class="nav-item">
+                <a href="<?= base_url('/logs/terminal') ?>" class="<?= isActive('/logs/terminal') ?>">
+                    <i class="fas fa-terminal nav-icon"></i>
+                    <span>Terminal</span>
+                </a>
+            </li>
 
             <li class="nav-item" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
                 <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();">

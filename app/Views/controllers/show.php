@@ -88,19 +88,43 @@
         </div>
 
         <!-- Grafik Level Air -->
-        <div class="card" style="margin-bottom: 30px; margin-top: 20px;">
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px;">
-                <h2 style="margin: 0; border: none;">Grafik Level Air</h2>
+        <div class="card chart-card-container">
+            <h2 class="chart-title">Grafik Level Air</h2>
+            
+            <div class="chart-controls-container">
                 <div class="btn-group">
-                    <button class="btn btn-sm chart-btn btn-primary" data-range="live" onclick="setChartRange('live')">Live</button>
-                    <button class="btn btn-sm chart-btn btn-secondary" data-range="60" onclick="setChartRange(60)">1 Jam</button>
-                    <button class="btn btn-sm chart-btn btn-secondary" data-range="360" onclick="setChartRange(360)">6 Jam</button>
-                    <button class="btn btn-sm chart-btn btn-secondary" data-range="1440" onclick="setChartRange(1440)">24 Jam</button>
+                    <button class="btn btn-sm chart-btn btn-primary" data-range="live" onclick="setChartRange('live')">
+                        <span class="label-long"><i class="fas fa-circle blink-icon"></i> Live</span>
+                        <span class="label-short"><i class="fas fa-circle blink-icon"></i> Live</span>
+                    </button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="30" onclick="setChartRange(30)">
+                        <span class="label-long">30 Menit</span><span class="label-short">30m</span>
+                    </button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="60" onclick="setChartRange(60)">
+                        <span class="label-long">1 Jam</span><span class="label-short">1j</span>
+                    </button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="360" onclick="setChartRange(360)">
+                        <span class="label-long">6 Jam</span><span class="label-short">6j</span>
+                    </button>
+                    <button class="btn btn-sm chart-btn btn-secondary" data-range="1440" onclick="setChartRange(1440)">
+                        <span class="label-long">24 Jam</span><span class="label-short">24j</span>
+                    </button>
+                </div>
+                <div class="chart-extra-tools">
+                    <div style="display: flex; gap: 5px;">
+                        <input type="number" id="customRangeInput" placeholder="Menit" class="custom-range-input" min="1">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setChartRange(document.getElementById('customRangeInput').value)">Go</button>
+                    </div>
+                    <div class="auto-scale-wrapper">
+                        <input type="checkbox" id="autoScaleToggle" checked onchange="toggleAutoScale(this.checked)">
+                        <label for="autoScaleToggle">Auto</label>
+                    </div>
                 </div>
             </div>
-            <div style="height: 300px; position: relative;">
+
+            <div class="chart-canvas-container">
                 <!-- Canvas Grafik dengan ID Controller -->
-                <canvas id="waterLevelChart" data-controller-id="<?= $controller['id'] ?>"></canvas>
+                <canvas id="waterLevelChart" data-controller-id="<?= $controller['id'] ?>" data-trigger="<?= $controller['trigger_percentage'] ?? 70 ?>"></canvas>
             </div>
         </div>
 

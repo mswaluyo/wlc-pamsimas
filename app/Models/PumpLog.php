@@ -2,125 +2,129 @@
 
 namespace app\Models;
 
-use PDO;
-
 class PumpLog {
+
     /**
-     * Membuat log status pompa baru dan menghitung durasi jika pompa dimatikan.
-     * Disesuaikan untuk kolom 'pump_status' dan 'timestamp'.
-     * @param int $controller_id
-     * @param bool $is_on
-     * @return bool
+     * Mengambil riwayat log pompa dengan paginasi dan nama tangki.
      */
-    public static function create(int $controller_id, bool $is_on): bool {
+    public static function getPaginatedHistory($limit, $offset, $controllerId = null) {
         $pdo = \Database::getInstance()->getConnection();
-        $duration = null;
-
-        // Jika status baru adalah OFF, hitung durasinya.
-        if (!$is_on) {
-            // Cari log 'ON' terakhir yang belum memiliki pasangan 'OFF'.
-            $sql_find_on = "
-                SELECT timestamp FROM pump_logs 
-                WHERE controller_id = :controller_id AND (pump_status = 1 OR pump_status = 'ON')
-                AND NOT EXISTS (
-                    SELECT 1 FROM pump_logs AS pl2 WHERE pl2.controller_id = pump_logs.controller_id AND pl2.pump_status = 0 AND pl2.timestamp > pump_logs.timestamp
-                )
-                ORDER BY timestamp DESC LIMIT 1";
-            $stmt_find = $pdo->prepare($sql_find_on);
-            $stmt_find->execute([':controller_id' => $controller_id]);
-            $last_on_log = $stmt_find->fetch(PDO::FETCH_ASSOC);
-
-            if ($last_on_log) {
-                $on_time = strtotime($last_on_log['timestamp']);
-                $off_time = time(); // Waktu saat ini
-                $duration = $off_time - $on_time;
-            }
+        // Join ke tabel controllers dan tank_configurations untuk dapat nama tangki
+        // PERBAIKAN: Ambil control_mode dari tabel log (pl) agar historis akurat.
+        // Gunakan COALESCE untuk fallback ke c.control_mode bagi data lama yang belum punya record mode.
+        $sql = "SELECT pl.*, t.tank_name, COALESCE(pl.control_mode, c.control_mode) as control_mode 
+                FROM pump_logs pl
+                LEFT JOIN controllers c ON pl.controller_id = c.id
+                LEFT JOIN tank_configurations t ON c.tank_id = t.id";
+        
+        if ($controllerId) {
+            $sql .= " WHERE pl.controller_id = :controller_id";
         }
 
-        // Masukkan log baru ke database.
-        $sql_insert = "INSERT INTO pump_logs (controller_id, pump_status, duration_seconds) VALUES (:controller_id, :status, :duration)";
-        $stmt_insert = $pdo->prepare($sql_insert);
-        return $stmt_insert->execute([
-            ':controller_id' => $controller_id,
-            ':status' => $is_on ? 1 : 0,
-            ':duration' => $duration
-        ]);
-    }
-
-    /**
-     * Membuat log dari data offline dengan timestamp yang sudah ada.
-     * Disesuaikan untuk kolom 'pump_status' dan 'timestamp'.
-     * @param int $controller_id
-     * @param int $timestamp_unix
-     * @param bool $is_on
-     * @return bool
-     */
-    public static function createWithTimestamp(int $controller_id, int $timestamp_unix, bool $is_on): bool {
-        $pdo = \Database::getInstance()->getConnection();
-        $duration = null;
-        $record_time_mysql = date('Y-m-d H:i:s', $timestamp_unix);
-
-        if (!$is_on) {
-            // Cari log 'ON' terakhir sebelum timestamp log 'OFF' ini yang belum memiliki pasangan 'OFF'.
-            $sql_find_on = "
-                SELECT timestamp FROM pump_logs 
-                WHERE controller_id = :controller_id AND (pump_status = 1 OR pump_status = 'ON') AND timestamp < :record_time
-                AND NOT EXISTS (
-                    SELECT 1 FROM pump_logs AS pl2 WHERE pl2.controller_id = pump_logs.controller_id AND pl2.pump_status = 0 AND pl2.timestamp > pump_logs.timestamp AND pl2.timestamp < :record_time
-                )
-                ORDER BY timestamp DESC LIMIT 1";
-            $stmt_find = $pdo->prepare($sql_find_on);
-            $stmt_find->execute([':controller_id' => $controller_id, ':record_time' => $record_time_mysql]);
-            $last_on_log = $stmt_find->fetch(PDO::FETCH_ASSOC);
-
-            if ($last_on_log) {
-                $on_time = strtotime($last_on_log['timestamp']);
-                $duration = $timestamp_unix - $on_time;
-            }
-        }
-
-        $sql_insert = "INSERT INTO pump_logs (controller_id, pump_status, duration_seconds, timestamp) VALUES (:controller_id, :status, :duration, :timestamp)";
-        $stmt_insert = $pdo->prepare($sql_insert);
-        return $stmt_insert->execute([
-            ':controller_id' => $controller_id,
-            ':status' => $is_on ? 1 : 0,
-            ':duration' => $duration,
-            ':timestamp' => $record_time_mysql
-        ]);
-    }
-
-    /**
-     * Mengambil riwayat log pompa dengan durasi dan paginasi.
-     * Disesuaikan untuk kolom 'pump_status' dan 'timestamp'.
-     * @param int $limit
-     * @param int $offset
-     * @return array
-     */
-    public static function getPaginatedHistory(int $limit, int $offset): array {
-        $pdo = \Database::getInstance()->getConnection();
-        $sql = "
-            SELECT 
-                pl.timestamp AS record_time, -- Gunakan alias agar view tidak perlu diubah
-                pl.pump_status AS status, -- Gunakan alias agar view tidak perlu diubah
-                pl.duration_seconds,
-                t.tank_name
-            FROM pump_logs pl
-            JOIN controllers c ON pl.controller_id = c.id
-            LEFT JOIN tank_configurations t ON c.tank_id = t.id
-            ORDER BY pl.timestamp DESC
-            LIMIT :limit OFFSET :offset";
+        $sql .= " ORDER BY pl.timestamp DESC LIMIT :limit OFFSET :offset";
+        
         $stmt = $pdo->prepare($sql);
-        $stmt->bindParam(':limit', $limit, PDO::PARAM_INT);
-        $stmt->bindParam(':offset', $offset, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', (int)$limit, \PDO::PARAM_INT);
+        $stmt->bindValue(':offset', (int)$offset, \PDO::PARAM_INT);
+        if ($controllerId) {
+            $stmt->bindValue(':controller_id', (int)$controllerId, \PDO::PARAM_INT);
+        }
         $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        return $stmt->fetchAll();
+    }
+
+    public static function countAll($controllerId = null) {
+        $pdo = \Database::getInstance()->getConnection();
+        $sql = "SELECT COUNT(*) FROM pump_logs";
+        if ($controllerId) {
+            $sql .= " WHERE controller_id = :controller_id";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([':controller_id' => $controllerId]);
+            return $stmt->fetchColumn();
+        }
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchColumn();
     }
 
     /**
-     * Menghitung total jumlah log pompa.
+     * Mencatat log status pompa baru (Real-time).
+     * Menghitung durasi dari status sebelumnya.
      */
-    public static function countAll(): int {
+    public static function create($controllerId, $isOn) {
+        return self::createWithTimestamp($controllerId, time(), $isOn);
+    }
+
+    /**
+     * Mencatat log dengan timestamp spesifik (untuk log offline atau real-time).
+     */
+    public static function createWithTimestamp($controllerId, $timestamp, $isOn) {
         $pdo = \Database::getInstance()->getConnection();
-        return (int) $pdo->query("SELECT COUNT(*) FROM pump_logs")->fetchColumn();
+        $status = $isOn ? 'ON' : 'OFF';
+        $recordTime = date('Y-m-d H:i:s', $timestamp);
+
+        // CEK DUPLIKASI: Jangan simpan jika sudah ada log dengan timestamp yang sama persis
+        // Ini mencegah spam log jika perangkat mengirim ulang data offline yang sama
+        $stmtCheck = $pdo->prepare("SELECT id FROM pump_logs WHERE controller_id = :id AND timestamp = :ts LIMIT 1");
+        $stmtCheck->execute([':id' => $controllerId, ':ts' => $recordTime]);
+        if ($stmtCheck->fetch()) {
+            return false; // Skip duplicate
+        }
+
+        // 0. Ambil mode saat ini dari controller untuk dicatat dalam sejarah
+        $stmtMode = $pdo->prepare("SELECT control_mode FROM controllers WHERE id = :id");
+        $stmtMode->execute([':id' => $controllerId]);
+        $currentMode = $stmtMode->fetchColumn(); 
+
+        // 1. Ambil log terakhir untuk menghitung durasi status sebelumnya
+        // Menggunakan timestamp <= recordTime untuk menangani event di detik yang sama
+        $stmt = $pdo->prepare("SELECT timestamp FROM pump_logs WHERE controller_id = :id AND timestamp <= :current_time ORDER BY timestamp DESC LIMIT 1");
+        $stmt->execute([
+            ':id' => $controllerId,
+            ':current_time' => $recordTime
+        ]);
+        $lastLog = $stmt->fetch();
+        
+        $duration = null;
+        if ($lastLog) {
+            $lastTime = strtotime($lastLog['timestamp']);
+            // Hitung selisih detik antara event sekarang dan event sebelumnya
+            $duration = $timestamp - $lastTime;
+            if ($duration < 0) $duration = 0; // Cegah durasi negatif
+        }
+
+        // 2. Simpan log baru
+        // PERBAIKAN: Simpan juga control_mode ke dalam tabel log
+        $sql = "INSERT INTO pump_logs (controller_id, pump_status, duration_seconds, timestamp, control_mode) VALUES (:controller_id, :pump_status, :duration, :timestamp, :control_mode)";
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            ':controller_id' => $controllerId,
+            ':pump_status' => $status,
+            ':duration' => $duration,
+            ':timestamp' => $recordTime,
+            ':control_mode' => $currentMode
+        ]);
+    }
+
+    /**
+     * Menghapus log yang lebih tua dari jumlah hari tertentu secara otomatis.
+     */
+    public static function cleanupOldLogs($days = 30) {
+        $pdo = \Database::getInstance()->getConnection();
+        $sql = "DELETE FROM pump_logs WHERE timestamp < DATE_SUB(NOW(), INTERVAL :days DAY)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->bindValue(':days', (int)$days, \PDO::PARAM_INT);
+        $stmt->execute();
+    }
+
+    /**
+     * Mengambil timestamp log terakhir untuk menghitung durasi status saat ini.
+     */
+    public static function getLastLogTime($controllerId) {
+        $pdo = \Database::getInstance()->getConnection();
+        // Tambahkan filter <= NOW() untuk mencegah log masa depan (akibat selisih jam) merusak timer
+        $stmt = $pdo->prepare("SELECT timestamp FROM pump_logs WHERE controller_id = :id AND timestamp <= NOW() ORDER BY timestamp DESC LIMIT 1");
+        $stmt->execute([':id' => $controllerId]);
+        return $stmt->fetchColumn();
     }
 }
