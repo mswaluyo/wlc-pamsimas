@@ -21,7 +21,7 @@ class ControllerController {
         }
 
         // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
-        if (session_status() === PHP_SESSION_ACTIVE) {
+        if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['remember_me'])) {
             $params = session_get_cookie_params();
             setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
         }
@@ -196,7 +196,8 @@ class ControllerController {
             'on_duration' => (int)($pump['on_duration_seconds'] / 60),
             'off_duration' => (int)($pump['off_duration_seconds'] / 60),
             // Tambahkan perintah restart otomatis setelah pendaftaran
-            'restart_command' => 1
+            'restart_command' => 1,
+            'device_token' => bin2hex(random_bytes(5)) // Generate token pendek (10 karakter)
         ];
 
         Controller::create($data);

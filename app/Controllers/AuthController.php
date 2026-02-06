@@ -39,6 +39,14 @@ class AuthController {
                 'full_name' => $user['full_name'],
                 'role' => $user['role']
             ];
+
+            // Cek opsi "Ingat Saya"
+            if (isset($_POST['remember_me'])) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
+                $_SESSION['remember_me'] = true; // Tandai sesi ini sebagai "diingat"
+            }
+
             header('Location: ' . base_url('/')); // Redirect ke dashboard
             exit();
         } else {

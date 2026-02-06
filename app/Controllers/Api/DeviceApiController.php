@@ -158,6 +158,33 @@ class DeviceApiController {
             'last_update' => date('Y-m-d H:i:s')
         ]);
 
+        // --- LOGIKA BARU: Safety Cutoff (Watchdog) ---
+        // Jika pompa ON di mode AUTO melebihi durasi yang ditentukan (+ toleransi), matikan paksa.
+        // Ini mengatasi masalah "fase istirahat tidak berfungsi" jika perangkat gagal mematikan pompa sendiri.
+        if ($controller['status'] === 'ON' && $controller['control_mode'] === 'AUTO') {
+            $lastLogTime = PumpLog::getLastLogTime($controller['id']);
+            if ($lastLogTime) {
+                $onDurationMinutes = (int)($controller['on_duration'] ?? 5);
+                $onDurationSeconds = $onDurationMinutes * 60;
+                $startTime = strtotime($lastLogTime);
+                $runTime = time() - $startTime;
+                
+                // Beri toleransi 5 menit atau 20% dari durasi, mana yang lebih besar
+                // Toleransi ini penting agar tidak bentrok dengan timer internal perangkat
+                $tolerance = max(300, $onDurationSeconds * 0.2);
+                
+                if ($runTime > ($onDurationSeconds + $tolerance)) {
+                    // Force OFF di Database
+                    Controller::update($controller['id'], ['status' => 'OFF']);
+                    PumpLog::create($controller['id'], false); // Catat log OFF
+                    EventLog::create($controller['id'], 'Safety Cutoff', "Pompa dimatikan paksa oleh server. Nyala: " . round($runTime/60) . "m, Batas: {$onDurationMinutes}m");
+                    
+                    // Update variabel lokal agar respon JSON ke perangkat menyuruh OFF
+                    $controller['status'] = 'OFF';
+                }
+            }
+        }
+
         // Bersihkan buffer output untuk mencegah karakter tambahan merusak JSON
         if (ob_get_level()) ob_clean();
 
@@ -182,6 +209,7 @@ class DeviceApiController {
             'mode_update_command' => (int)($controller['mode_update_command'] ?? 0),
             'config_update_command' => (int)($controller['config_update_command'] ?? 0),
             'restart_command' => (int)($controller['restart_command'] ?? 0),
+            'reset_logs_command' => (int)($controller['reset_logs_command'] ?? 0),
             // Sertakan juga data konfigurasi lengkap, karena endpoint ini dipakai oleh fetchControlStatus juga.
             'on_duration' => (int)($controller['on_duration'] ?? 5),
             'off_duration' => (int)($controller['off_duration'] ?? 15),
@@ -267,6 +295,10 @@ class DeviceApiController {
                     } else {
                         EventLog::create($controller['id'], 'Power On', 'Perangkat menyala kembali (Restart cepat).');
                     }
+
+                    // PERBAIKAN: Otomatis reset flag restart_command saat perangkat melapor baru menyala (boot).
+                    // Ini mencegah bootloop jika perangkat gagal mengirim konfirmasi 'reset_restart' sebelum reboot.
+                    $updateData['restart_command'] = 0;
                 } elseif ($value === 'network_recovered') {
                     if ($offlineDuration > $powerLossThreshold) {
                         EventLog::create($controller['id'], 'Connection Recovered', 'Koneksi internet pulih setelah terputus selama ' . $durationString);
@@ -279,6 +311,10 @@ class DeviceApiController {
                 break;
             case 'reset_restart':
                 $updateData['restart_command'] = 0;
+                break;
+            case 'reset_logs_completed':
+                $updateData['reset_logs_command'] = 0;
+                EventLog::create($controller['id'], 'System', 'Log offline berhasil dihapus dari perangkat (Remote Clear).');
                 break;
             case 'reset_config_update':
                 $updateData['config_update_command'] = 0;
@@ -380,6 +416,13 @@ class DeviceApiController {
                 'rssi' => $lastRssi,
                 'last_update' => date('Y-m-d H:i:s') // PERBAIKAN: Perbarui juga timestamp
             ]);
+        }
+
+        // PERBAIKAN: Catat event bahwa log offline berhasil diterima dan diproses
+        if ((isset($data['sensor_logs']) && !empty($data['sensor_logs'])) || 
+            (isset($data['pump_logs']) && !empty($data['pump_logs'])) || 
+            (isset($data['event_logs']) && !empty($data['event_logs']))) {
+            EventLog::create($controller_id, 'Offline Logs', 'Server berhasil menerima dan memproses data offline.');
         }
 
         http_response_code(200);

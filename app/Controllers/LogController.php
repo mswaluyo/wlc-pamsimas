@@ -19,7 +19,7 @@ class LogController {
         }
 
         // FITUR REMEMBER ME: Perpanjang durasi session cookie menjadi 30 hari
-        if (session_status() === PHP_SESSION_ACTIVE) {
+        if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['remember_me'])) {
             $params = session_get_cookie_params();
             setcookie(session_name(), session_id(), time() + (86400 * 30), $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
         }

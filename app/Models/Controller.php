@@ -61,6 +61,7 @@ class Controller {
             SELECT
                 c.id,
                 c.mac_address,
+                c.device_token,
                 c.status,
                 c.control_mode,
                 c.last_update,
@@ -110,11 +111,25 @@ class Controller {
                 c.trigger_percentage,
                 c.on_duration,
                 c.off_duration,
-                c.restart_command
+                c.restart_command,
+                c.reset_logs_command
             FROM controllers c
             WHERE c.mac_address = :mac_address";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':mac_address' => $macAddress]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Mencari data controller berdasarkan Device Token.
+     * @param string $token
+     * @return array|null
+     */
+    public static function findByToken(string $token) {
+        $pdo = \Database::getInstance()->getConnection();
+        $sql = "SELECT * FROM controllers WHERE device_token = :token LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([':token' => $token]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
@@ -130,7 +145,7 @@ class Controller {
 
             // 1. Masukkan ke tabel controllers
             // PERBAIKAN: Sesuaikan query INSERT dengan struktur tabel yang benar
-            $sql = "INSERT INTO controllers (mac_address, tank_id, pump_id, sensor_id, full_tank_distance, empty_tank_distance, trigger_percentage, on_duration, off_duration, restart_command) VALUES (:mac_address, :tank_id, :pump_id, :sensor_id, :full_tank_distance, :empty_tank_distance, :trigger_percentage, :on_duration, :off_duration, :restart_command)";
+            $sql = "INSERT INTO controllers (mac_address, tank_id, pump_id, sensor_id, full_tank_distance, empty_tank_distance, trigger_percentage, on_duration, off_duration, restart_command, device_token) VALUES (:mac_address, :tank_id, :pump_id, :sensor_id, :full_tank_distance, :empty_tank_distance, :trigger_percentage, :on_duration, :off_duration, :restart_command, :device_token)";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($data);
 

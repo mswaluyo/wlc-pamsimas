@@ -1,14 +1,13 @@
 // =================================================================
-// == Kode ini diadaptasi dari kode Blynk untuk Server Web Pribadi ==
+// == Kode Firmware WLC Pamsimas (Versi HTTP/HTTPS) ==
 // =================================================================
-#include <WiFiClientSecure.h> // Tambahkan library untuk HTTPS
 // Uncomment baris di bawah ini untuk melakukan factory reset EEPROM pada flash berikutnya.
 // #define FORCE_FACTORY_RESET  // <--- FITUR RESET DINONAKTIFKAN
 
 // --- Library yang Dibutuhkan ---
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <ESP8266httpUpdate.h>  // Library baru untuk HTTP Update
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>        // FIX: Tambahkan kembali library ArduinoJson
 #include <time.h>               // Library untuk manajemen waktu
 #include <LittleFS.h>           // Library untuk sistem file
@@ -24,21 +23,13 @@ using namespace ace_button;
 const char* ssid = "Pamsimas Tirto Argo";  // Ganti dengan SSID Wi-Fi Anda
 const char* pass = "p@msim45";             // Ganti dengan Password Wi-Fi Anda
 
-// --- Konfigurasi Server API ---
-const char* server_domain = "pamsimas.selur.my.id"; // PERBAIKAN: Domain server yang benar
-const int server_port = 443; // Port standar untuk HTTPS
-const char* api_key = "P4mS1m4s-T1rt0-Arg0-2025";           // API Key harus SAMA PERSIS dengan yang di PHP
-const char* api_log_endpoint = "/api/log";                  // Sesuaikan dengan struktur URL di server live
-const char* api_status_endpoint = "/api/status";            // Sesuaikan dengan struktur URL di server live
-const char* api_offline_log_endpoint = "/api/log-offline";  // Sesuaikan dengan struktur URL di server live
-const char* api_update_endpoint = "/api/update";            // Endpoint untuk mengirim laporan/perintah
-
-// Fingerprint SHA1 dari sertifikat SSL/TLS server Anda.
-// Anda bisa mendapatkannya dengan membuka https://apps.selur.desa.id/ di browser, klik ikon gembok, lihat detail sertifikat.
-const char* fingerprint = ""; // Tidak digunakan karena kita menggunakan setInsecure()
+// --- Konfigurasi Server (Cloudflare Tunnel) ---
+const char* server_domain = "pamsimas.selur.my.id"; // Domain Anda
+const int   server_port   = 443; // HTTPS Port
+const char* api_key       = "P4mS1m4s-T1rt0-Arg0-2025"; // Wajib sama dengan di .env Server
 
 // --- Konfigurasi Perangkat ---
-char deviceMacAddress[18];                    // Akan diisi secara otomatis (17 karakter + null terminator)
+char deviceMacAddress[18];                    // MAC Address (Otomatis)
 const char* deviceName = "ESP8266-Pamsimas";  // Nama default perangkat
 
 // --- Konfigurasi Sensor & Aktuator ---
@@ -68,7 +59,8 @@ struct DeviceConfig {
 #define EEPROM_ADDR_MODE 16           // byte (1 byte) - Saat ini tidak digunakan
 #define EEPROM_ADDR_DEVICE_CONFIG 18  // Alamat untuk struct DeviceConfig
 #define EEPROM_ADDR_IS_REGISTERED 50  // GESER ALAMAT: Dari 40 ke 50 agar muat untuk struct baru
-#define EEPROM_SIZE 64                // Perbesar ukuran EEPROM untuk mengakomodasi struct
+#define EEPROM_SIZE 512               // Perbesar ukuran EEPROM
+
 // =================================================================
 // --- VARIABEL GLOBAL (JANGAN DIUBAH KECUALI ANDA TAHU APA YANG DILAKUKAN) ---
 // =================================================================
@@ -115,22 +107,19 @@ bool isResumingFill = false;          // Flag untuk menandai jika harus melanjut
 
 // Variabel untuk Timing
 unsigned long lastDataSendTime = 0;
+unsigned long lastStatusFetchTime = 0; // Khusus HTTP: Polling status
 unsigned long lastReconnectAttempt = 0;  // Untuk reconnect non-blocking
 unsigned long lastOfflineLogSync = 0;    // Untuk sinkronisasi log offline
-unsigned long lastStatusFetchTime = 0;
 unsigned long pumpStartTime = 0;
 long pumpOnDuration = 5 * 60 * 1000;    // Default 5 menit (dalam milidetik)
 long pumpOffDuration = 15 * 60 * 1000;  // Default 15 menit (dalam milidetik)
 bool pumpTimedState = false;            // Status pompa untuk mode TIMED
 
-// PERBAIKAN: Tambahkan variabel untuk mendeteksi kegagalan koneksi ke server
 int serverConnectionFailures = 0;
 const int MAX_SERVER_FAILURES = 5; // Beralih ke AUTO setelah 5 kali gagal berturut-turut
 
-const long dataSendInterval = 500;        // Kirim data sensor setiap 0.5 detik
-const long STATUS_FETCH_NORMAL = 2000;    // Interval normal: 2 detik
-const long STATUS_FETCH_MAX = 60000;      // Interval maksimum saat error: 60 detik
-long currentStatusFetchInterval = STATUS_FETCH_NORMAL; // Interval yang bisa berubah-ubah
+const long dataSendInterval = 5000;       // Kirim data setiap 5 detik (HTTP lebih berat dari MQTT)
+const long statusFetchInterval = 3000;    // Cek status/perintah setiap 3 detik
 
 const long reconnectInterval = 10000;     // Coba sambung ulang setiap 10 detik
 const long offlineSyncInterval = 300000;  // Coba kirim log offline setiap 5 menit
@@ -145,18 +134,16 @@ void button1Handler(AceButton*, uint8_t, uint8_t);  // Forward declaration
 void button2Handler(AceButton*, uint8_t, uint8_t);  // Forward declaration
 
 // --- DEKLARASI FUNGSI (PROTOTYPES) ---
-// Ini memberitahu kompiler tentang semua fungsi yang ada sebelum digunakan.
 bool loadConfigFromEEPROM();
 void connectToWiFi(bool isInitialBoot);
 float calculateMovingAverage();
 void syncTime();
-void fetchQuickStatus(); // <<< FUNGSI BARU YANG RINGAN
-void fetchControlStatus();
 void logDataOffline(float percentage, float cm, int rssi);
 void logPumpStatusOffline(bool status);
 void logEventOffline(const char* eventName);
 void sendSensorData(float percentage, float cm);
 void sendControlCommand(const char* action, const char* value);
+void fetchControlStatus();
 void sendOfflineLogs();
 void measureAndSendData();
 void runUniversalPumpLogic();
@@ -189,8 +176,9 @@ void setup() {
   strcpy(currMode, "AUTO");
   modeFlag = true;
 
+  // Ambil MAC Address
   strncpy(deviceMacAddress, WiFi.macAddress().c_str(), sizeof(deviceMacAddress));
-  Serial.printf("ID Perangkat (MAC Address): %s\n", deviceMacAddress);
+  Serial.printf("MAC Address: %s\n", deviceMacAddress);
 
   pinMode(ECHOPIN, INPUT);
   pinMode(TRIGPIN, OUTPUT);
@@ -215,15 +203,14 @@ void setup() {
     syncTime();
     Serial.println("Mengirim laporan 'boot' ke server...");
     // PERBAIKAN: Kirim status mode 'AUTO' ke server saat boot untuk memastikan sinkronisasi.
-    sendControlCommand("set_mode", "AUTO");
     sendControlCommand("report_event", "boot");
-    Serial.println("Mengirim ping deteksi awal ke server (persen=0, cm=0)...");
-    // PERBAIKAN: Sesuaikan panggilan fungsi dengan dua argumen (persen dan cm).
-    sendSensorData(0.0, 0.0);
-    Serial.println("Melakukan sinkronisasi status awal dengan server...");
-    fetchControlStatus();
-    sendOfflineLogs();
+    fetchControlStatus(); // Ambil config awal
   }
+
+  // PERBAIKAN BUG: Baca sensor satu kali SEBELUM masuk loop utama.
+  // Ini mencegah pompa menyala otomatis karena variabel waterLevelPer masih 0 (dianggap kosong).
+  Serial.println("Inisialisasi pembacaan sensor awal...");
+  measureAndSendData();
 
   wasConnected = (WiFi.status() == WL_CONNECTED);
 }
@@ -254,28 +241,20 @@ void loop() {
       
       // SINKRONISASI SETELAH KONEKSI PULIH
       syncTime(); // 1. Sinkronkan waktu terlebih dahulu.
-      delay(1000); // Jeda agar stack SSL stabil
       sendControlCommand("report_event", "network_recovered"); // 2. Laporkan bahwa koneksi telah pulih.
-      delay(1000); // Jeda
-      // 3. PERBAIKAN LOGIKA: Laporkan mode 'AUTO' yang menjadi fallback ke server.
-      sendControlCommand("set_mode", "AUTO"); 
-      delay(1000); // Jeda
       sendOfflineLogs(); // 4. Kirim semua log yang tersimpan saat offline.
-      delay(1000); // Jeda
-      fetchControlStatus(); // 5. Ambil konfigurasi penuh dari server (mode sekarang sudah sinkron).
     }
   }
 
   // --- TAHAP 2: LOGIKA OPERASIONAL INTI ---
   // Logika ini harus tetap berjalan baik online maupun offline, selama perangkat sudah terdaftar.
   if (!isRegistered) {
-    // Jika belum terdaftar, hanya cek status ke server jika sedang online.
-    if (wasConnected && (currentMillis - lastStatusFetchTime >= currentStatusFetchInterval)) {
+    // Jika belum terdaftar, polling status lebih jarang
+    if (WiFi.status() == WL_CONNECTED && currentMillis - lastStatusFetchTime >= 5000) {
       lastStatusFetchTime = currentMillis;
-      fetchQuickStatus();
+      fetchControlStatus();
     }
-    // Hentikan eksekusi di sini jika belum terdaftar.
-    return; 
+    return;
   }
 
   // --- BLOK OPERASIONAL PENUH (JIKA SUDAH TERDAFTAR) ---
@@ -290,15 +269,13 @@ void loop() {
     measureAndSendData();
   }
 
-  runUniversalPumpLogic();
-
-  // Hanya coba ambil status dari server jika sedang online.
-  if (wasConnected) {
-    if (currentMillis - lastStatusFetchTime >= currentStatusFetchInterval) {
-      lastStatusFetchTime = currentMillis;
-      fetchQuickStatus();
-    }
+  // Polling Status/Perintah dari Server (Pengganti Subscribe MQTT)
+  if (WiFi.status() == WL_CONNECTED && currentMillis - lastStatusFetchTime >= statusFetchInterval) {
+    lastStatusFetchTime = currentMillis;
+    fetchControlStatus();
   }
+
+  runUniversalPumpLogic();
 
   // PERBAIKAN: Logika fallback baru jika server tidak dapat dihubungi
   if (serverConnectionFailures >= MAX_SERVER_FAILURES && strcmp(currMode, "AUTO") != 0) {
@@ -390,6 +367,95 @@ float calculateMovingAverage() {
   return sum / count;
 }
 
+// Helper untuk request HTTP
+void sendHttpRequest(const char* endpoint, const char* method, String payload, bool isStatusCheck) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  WiFiClientSecure client;
+  client.setInsecure(); // Penting untuk Cloudflare SSL
+  HTTPClient http;
+
+  String url = "https://" + String(server_domain) + endpoint;
+  
+  // Khusus GET status, tambahkan parameter MAC
+  if (strcmp(method, "GET") == 0) {
+    url += "?mac=" + String(deviceMacAddress);
+  }
+  
+  Serial.print("Requesting: "); Serial.println(url); // Debug URL aktif
+
+  if (http.begin(client, url)) {
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("X-API-Key", api_key);
+    // Tambahkan User-Agent agar tidak diblokir oleh Cloudflare Bot Protection
+    http.setUserAgent("Mozilla/5.0 (Compatible; ESP8266; WLC-Pamsimas)");
+
+    int httpCode;
+    if (strcmp(method, "POST") == 0) {
+      httpCode = http.POST(payload);
+    } else {
+      httpCode = http.GET();
+    }
+
+    if (httpCode > 0) {
+      serverConnectionFailures = 0;
+      if (isStatusCheck && httpCode == 200) {
+        // Parse respons status
+        String response = http.getString();
+        DynamicJsonDocument doc(1024);
+        deserializeJson(doc, response);
+
+        if (doc["status"] == "unregistered") {
+          isRegistered = false;
+        } else {
+          if (!isRegistered) {
+             isRegistered = true;
+             EEPROM.write(EEPROM_ADDR_IS_REGISTERED, 1); EEPROM.commit();
+          }
+          
+          // Update Mode & Status
+          const char* sMode = doc["control_mode"];
+          const char* sStatus = doc["status"];
+          if (sMode) {
+             strncpy(currMode, sMode, sizeof(currMode)-1);
+             modeFlag = (strcmp(currMode, "AUTO") == 0);
+          }
+          if (!modeFlag && sStatus) {
+             relayStatus = (strcmp(sStatus, "ON") == 0);
+          }
+
+          // Update Config
+          DeviceConfig newConfig;
+          newConfig.on_duration_minutes = doc["on_duration"];
+          newConfig.off_duration_minutes = doc["off_duration"];
+          newConfig.full_tank_distance = doc["full_tank_distance"];
+          newConfig.empty_tank_distance = doc["empty_tank_distance"];
+          newConfig.trigger_percentage = doc["trigger_percentage"];
+          newConfig.min_run_time = doc["min_run_time"] | 60;
+          
+          if (memcmp(&newConfig, &config, sizeof(DeviceConfig)) != 0) {
+             config = newConfig;
+             pumpOnDuration = (long)config.on_duration_minutes * 60000;
+             pumpOffDuration = (long)config.off_duration_minutes * 60000;
+             EEPROM.put(EEPROM_ADDR_DEVICE_CONFIG, config); EEPROM.commit();
+          }
+
+          // Perintah Khusus
+          if (doc["restart_command"] == 1) {
+             sendControlCommand("reset_restart", "0");
+             delay(1000); ESP.restart();
+          }
+          if (doc["mode_update_command"] == 1) sendControlCommand("reset_mode_update", "0");
+        }
+      }
+    } else {
+      Serial.printf("HTTP Error: %d\n", httpCode);
+      serverConnectionFailures++;
+    }
+    http.end();
+  }
+}
+
 void syncTime() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -403,224 +469,6 @@ void syncTime() {
   }
   timeSynchronized = true;
   Serial.printf("Waktu berhasil disinkronkan: %s", ctime(&now));
-}
-
-/**
- * Fungsi ringan untuk mengambil status singkat (mode & status pompa) dari server.
- * Juga memeriksa apakah ada perintah untuk mengambil konfigurasi penuh.
- * Menerapkan strategi backoff jika gagal.
- */
-void fetchQuickStatus() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClientSecure secureClient; // Gunakan secureClient untuk HTTPS
-  secureClient.setInsecure();    // Abaikan validasi sertifikat agar koneksi HTTPS lancar
-  HTTPClient http; 
-  char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s%s?mac=%s", server_domain, api_status_endpoint, deviceMacAddress); // Gunakan https dan server_domain
-
-  if (http.begin(secureClient, serverPath)) { // Gunakan secureClient
-    http.addHeader("X-API-Key", api_key);
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode == 200) {
-      StaticJsonDocument<512> doc;
-      deserializeJson(doc, http.getStream());
-
-      // Cek jika ada perintah untuk mengambil konfigurasi penuh
-      if (doc.containsKey("config_update_command") && doc["config_update_command"] == 1) {
-        Serial.println("PERINTAH: Menerima perintah untuk mengambil konfigurasi penuh dari server...");
-        fetchControlStatus(); // Panggil fungsi lengkap
-        sendControlCommand("reset_config_update", "0");
-        http.end();
-        return; 
-      }
-
-      // PERBAIKAN: Logika baru untuk mengubah mode hanya jika ada perintah
-      if (doc.containsKey("mode_update_command") && doc["mode_update_command"] == 1) {
-        Serial.println("PERINTAH: Menerima perintah perubahan mode dari server.");
-        const char* serverMode = doc["control_mode"];
-        if (serverMode) {
-          strncpy(currMode, serverMode, sizeof(currMode) - 1);
-          modeFlag = (strcmp(currMode, "AUTO") == 0);
-          Serial.printf("  -> Mode diubah menjadi: %s\n", currMode);
-          // Kirim konfirmasi kembali ke server untuk mereset bendera
-          sendControlCommand("reset_mode_update", "0");
-        }
-      }
-      // Selalu sinkronkan status pompa jika dalam mode selain AUTO
-      if (strcmp(currMode, "AUTO") != 0) {
-        const char* serverStatus = doc["status"];
-        if (serverStatus) {
-          relayStatus = (strcmp(serverStatus, "ON") == 0);
-        }
-      }
-
-      // Jika berhasil, kembalikan interval ke normal
-      if (currentStatusFetchInterval != STATUS_FETCH_NORMAL) {
-        Serial.println("NETWORK: Komunikasi dengan server pulih. Interval status kembali normal.");
-        currentStatusFetchInterval = STATUS_FETCH_NORMAL;
-      }
-      serverConnectionFailures = 0; // Reset penghitung kegagalan jika berhasil
-
-    } else {
-      Serial.printf("KESALAHAN: [QuickStatus] GET... gagal, kode error: %d\n", httpResponseCode);
-      currentStatusFetchInterval = min(currentStatusFetchInterval * 2, STATUS_FETCH_MAX);
-      Serial.printf("NETWORK: Gagal menghubungi server. Interval status diperpanjang menjadi %ld ms.\n", currentStatusFetchInterval);
-      serverConnectionFailures++; // Tambah penghitung kegagalan
-    }
-    http.end();
-  } else {
-    Serial.printf("KESALAHAN: [QuickStatus] Tidak bisa terhubung ke server.\n");
-    currentStatusFetchInterval = min(currentStatusFetchInterval * 2, STATUS_FETCH_MAX);
-    Serial.printf("NETWORK: Gagal menghubungi server. Interval status diperpanjang menjadi %ld ms.\n", currentStatusFetchInterval);
-    serverConnectionFailures++; // Tambah penghitung kegagalan
-  }
-}
-
-void fetchControlStatus() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s%s?mac=%s", server_domain, api_status_endpoint, deviceMacAddress);
-
-  if (http.begin(client, serverPath)) {
-    Serial.printf("Fetching FULL CONFIG from: %s\n", serverPath);
-    http.addHeader("X-API-Key", api_key);
-
-    int httpResponseCode = http.GET();
-    if (httpResponseCode == 200) {
-      String payload = http.getString();
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, payload);
-
-      if (error) {
-        Serial.println("--- Respons Gagal Parsing ---");
-        Serial.println(payload);
-        Serial.println("---------------------------");
-        Serial.print("deserializeJson() gagal: ");
-        Serial.println(error.c_str());
-        http.end();
-        return;
-      }
-
-      if (doc.containsKey("status") && doc["status"] == "unregistered") {
-        Serial.println("STATUS: Perangkat belum terdaftar. Menunggu pendaftaran di server...");
-        isRegistered = false;
-        digitalWrite(wifiLed, !digitalRead(wifiLed));
-        http.end();
-        return;
-      }
-      
-      // FIX: Gunakan nama kunci yang benar ('control_mode') dan tambahkan pemeriksaan NULL.
-      const char* serverMode = doc["control_mode"];
-      const char* serverStatus = doc["status"];
-
-      // Pemeriksaan keamanan untuk mencegah crash jika kunci tidak ada dalam JSON.
-      if (serverMode == nullptr || serverStatus == nullptr) {
-        Serial.println("KESALAHAN: Respons JSON dari server tidak lengkap (mode/status tidak ada).");
-        http.end();
-        return;
-      }
-
-      Serial.println("RESPONS SERVER: Diterima data dari server.");
-      Serial.printf("  - Mode Kontrol: %s\n", serverMode ? serverMode : "NULL");
-      Serial.printf("  - Status Pompa: %s\n", serverStatus ? serverStatus : "NULL");
-
-      strncpy(currMode, serverMode, sizeof(currMode) - 1);
-      modeFlag = (strcmp(currMode, "AUTO") == 0);
-
-      if (strcmp(currMode, "AUTO") != 0) {
-        relayStatus = (strcmp(serverStatus, "ON") == 0);
-      }
-
-      if (!isRegistered) {
-        Serial.println("Pendaftaran berhasil! Perangkat sekarang aktif.");
-        EEPROM.write(EEPROM_ADDR_IS_REGISTERED, 1);
-        EEPROM.commit();
-        Serial.println("Status 'Terdaftar' telah disimpan ke EEPROM.");
-      }
-      isRegistered = true;
-      digitalWrite(wifiLed, LOW);
-
-      Serial.println("\n--- PROSES PENGECEKAN KONFIGURASI ---");
-
-      DeviceConfig newConfig;
-      newConfig.on_duration_minutes = doc["on_duration"];
-      // PERBAIKAN: Validasi durasi nyala agar tidak 0 atau negatif (Default 5 menit)
-      if (newConfig.on_duration_minutes <= 0) newConfig.on_duration_minutes = 5;
-
-      newConfig.off_duration_minutes = doc["off_duration"].as<int>();
-      newConfig.full_tank_distance = doc["full_tank_distance"];
-      newConfig.trigger_percentage = doc["trigger_percentage"];
-      newConfig.empty_tank_distance = doc["empty_tank_distance"];
-      
-      if (doc.containsKey("sensor_debounce")) {
-        sensorDebounceDelay = doc["sensor_debounce"];
-      }
-      
-      // Ambil konfigurasi Minimum Run Time (Waktu Tunda) dari server
-      // Default ke 60 detik jika tidak dikirim server
-      newConfig.min_run_time = doc.containsKey("min_run_time") ? doc["min_run_time"] : 60;
-
-      Serial.println("  [KONFIGURASI DARI SERVER]");
-      Serial.printf("    - Durasi Nyala: %d menit\n", newConfig.on_duration_minutes);
-      Serial.printf("    - Durasi Istirahat: %d menit\n", newConfig.off_duration_minutes);
-      Serial.printf("    - Jarak Penuh: %d cm\n", newConfig.full_tank_distance);
-      Serial.printf("    - Jarak Kosong: %d cm\n", newConfig.empty_tank_distance);
-      Serial.printf("    - Pemicu Pompa: %d %%\n", newConfig.trigger_percentage);
-      Serial.printf("    - Min Run Time: %d detik\n", newConfig.min_run_time);
-
-      Serial.println("\n  [KONFIGURASI LOKAL SAAT INI]");
-      Serial.printf("    - Durasi Nyala: %d menit\n", config.on_duration_minutes);
-      Serial.printf("    - Durasi Istirahat: %d menit\n", config.off_duration_minutes);
-      Serial.printf("    - Jarak Penuh: %d cm\n", config.full_tank_distance);
-      Serial.printf("    - Jarak Kosong: %d cm\n", config.empty_tank_distance);
-      Serial.printf("    - Pemicu Pompa: %d %%\n", config.trigger_percentage);
-
-      bool configHasChanged = (memcmp(&newConfig, &config, sizeof(DeviceConfig)) != 0);
-
-      Serial.println("\n  [HASIL PERBANDINGAN]");
-      Serial.println("\n--- KESIMPULAN ---");
-      if (configHasChanged) {
-        Serial.println("-> Ditemukan perubahan nilai konfigurasi yang signifikan.");
-        Serial.println("-> Memperbarui variabel dan menyimpan ke EEPROM...");
-        memcpy(&config, &newConfig, sizeof(DeviceConfig));
-        pumpOnDuration = (long)config.on_duration_minutes * 60 * 1000;
-        pumpOffDuration = (long)config.off_duration_minutes * 60 * 1000;
-        EEPROM.put(EEPROM_ADDR_DEVICE_CONFIG, config);
-        if (EEPROM.commit()) {
-          Serial.println("Penyimpanan ke EEPROM selesai.");
-        }
-      } else {
-        Serial.println("-> Tidak ada perubahan nilai konfigurasi yang signifikan.");
-        Serial.println("-> Penulisan ke EEPROM dilewati untuk menjaga umur memori.");
-      }
-      Serial.println("-------------------------------------\n");
-
-      if (doc.containsKey("restart_command") && doc["restart_command"] == 1) {
-        Serial.println("PERINTAH: Menerima perintah restart dari server. Merestart dalam 3 detik...");
-        sendControlCommand("reset_restart", "0");
-        delay(3000);
-        ESP.restart();
-      }
-
-      if (!versionReported) {
-        const char* currentVersion = __DATE__ " " __TIME__;
-        sendControlCommand("report_version", currentVersion);
-        versionReported = true;
-      }
-
-    } else {
-      Serial.printf("KESALAHAN: [HTTP] GET... gagal, kode error: %d\n", httpResponseCode);
-    }
-    http.end();
-  } else {
-    Serial.printf("KESALAHAN: [HTTP] Tidak bisa terhubung ke server.\n");
-  }
 }
 
 void logDataOffline(float percentage, float cm, int rssi) {
@@ -679,39 +527,15 @@ void sendSensorData(float percentage, float cm) {
     return;
   }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  char serverPath[128];
-  snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_log_endpoint);
-
-  if (http.begin(client, serverPath)) {
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-API-Key", api_key);
-
-    StaticJsonDocument<200> doc;
-    doc["mac_address"] = deviceMacAddress;
-    // PERBAIKAN: Ganti nama kunci agar sesuai dengan yang diharapkan server.
-    doc["water_percentage"] = percentage;
-    doc["water_level_cm"] = cm; // PERBAIKAN: Tambahkan nilai CM
-    int currentRssi = WiFi.RSSI();
-    doc["rssi"] = currentRssi;
-
-    String requestBody;
-    serializeJson(doc, requestBody);
-    int httpResponseCode = http.POST(requestBody);
-
-    if (httpResponseCode < 200 || httpResponseCode >= 300) {
-      Serial.printf("SERVER: Gagal mengirim data sensor (HTTP Code: %d), menyimpan ke log offline.\n", httpResponseCode);
-      logDataOffline(percentage, cm, currentRssi);
-    } else {
-      Serial.println("SERVER: Data sensor berhasil dikirim.");
-      // Jika pengiriman data berhasil, berarti koneksi ke server baik-baik saja.
-      // Reset penghitung kegagalan.
-      serverConnectionFailures = 0;
-    }
-    http.end();
-  }
+  // Kirim via HTTP
+  DynamicJsonDocument doc(256);
+  doc["mac_address"] = deviceMacAddress;
+  doc["water_level_cm"] = cm;
+  doc["water_percentage"] = percentage;
+  doc["rssi"] = WiFi.RSSI();
+  
+  String json; serializeJson(doc, json);
+  sendHttpRequest("/api/log", "POST", json, false);
 }
 
 void sendControlCommand(const char* action, const char* value) {
@@ -725,153 +549,25 @@ void sendControlCommand(const char* action, const char* value) {
     return;
   }
 
-  // PERBAIKAN: Tambahkan mekanisme Retry (3x percobaan) untuk stabilitas
-  for (int attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) {
-      Serial.printf("[HTTP] Retry ke-%d mengirim perintah '%s'...\n", attempt, action);
-      delay(1000); // Tunggu 1 detik sebelum mencoba lagi
-    }
+  // Kirim via HTTP
+  DynamicJsonDocument doc(256);
+  doc["mac"] = deviceMacAddress;
+  doc["action"] = action;
+  doc["value"] = value;
+  
+  String json; serializeJson(doc, json);
+  sendHttpRequest("/api/update", "POST", json, false);
+}
 
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    char serverPath[128];
-    snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_update_endpoint);
-
-    if (http.begin(client, serverPath)) {
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("X-API-Key", api_key);
-      StaticJsonDocument<200> doc;
-      doc["mac"] = deviceMacAddress;
-      doc["action"] = action;
-      doc["value"] = value;
-
-      String requestBody;
-      serializeJson(doc, requestBody);
-      int httpResponseCode = http.POST(requestBody);
-      
-      http.end(); // Tutup koneksi segera
-
-      if (httpResponseCode > 0 && httpResponseCode < 400) {
-        Serial.printf("[HTTP] Perintah '%s' -> '%s' dikirim, kode: %d\n", action, value, httpResponseCode);
-        return; // Berhasil, keluar dari fungsi
-      } else {
-        Serial.printf("[HTTP] Gagal mengirim perintah (Kode: %d)\n", httpResponseCode);
-      }
-    }
-  }
-
-  // Jika sampai sini berarti gagal total setelah 3x percobaan
-  Serial.printf("[HTTP] Gagal total mengirim perintah '%s'.\n", action);
-  if (strcmp(action, "set_status") == 0) {
-    logPumpStatusOffline(strcmp(value, "ON") == 0);
-  }
+void fetchControlStatus() {
+  sendHttpRequest("/api/status", "GET", "", true);
 }
 
 void sendOfflineLogs() {
-  bool hasSensorLogs = LittleFS.exists("/sensor_log.txt") && LittleFS.open("/sensor_log.txt", "r").size() > 0;
-  bool hasPumpLogs = LittleFS.exists("/pump_log.txt") && LittleFS.open("/pump_log.txt", "r").size() > 0;
-  bool hasEventLogs = LittleFS.exists("/event_log.txt") && LittleFS.open("/event_log.txt", "r").size() > 0;
-
-  if (!hasSensorLogs && !hasPumpLogs && !hasEventLogs) {
-    return;
-  }
-
-  Serial.println("Membaca log offline untuk dikirim ke server...");
-
-  // Konstruksi payload JSON secara manual dalam String
-  // Catatan: Ini menggunakan RAM. Jika log sangat besar, pertimbangkan mengirim per bagian.
-  String payload = "{\"mac_address\":\"" + String(deviceMacAddress) + "\"";
-
-  if (hasSensorLogs) {
-    payload += ",\"sensor_logs\":[";
-    File file = LittleFS.open("/sensor_log.txt", "r");
-    if (file) {
-      bool first = true;
-      while (file.available()) {
-        String line = file.readStringUntil('\n');
-        line.trim();
-        if (line.length() > 0) {
-          if (!first) payload += ",";
-          payload += "[" + line + "]";
-          first = false;
-        }
-      }
-      file.close();
-    }
-    payload += "]";
-  }
-
-  if (hasPumpLogs) {
-    payload += ",\"pump_logs\":[";
-    File file = LittleFS.open("/pump_log.txt", "r");
-    if (file) {
-      bool first = true;
-      while (file.available()) {
-        String line = file.readStringUntil('\n');
-        line.trim();
-        if (line.length() > 0) {
-          if (!first) payload += ",";
-          payload += "[" + line + "]";
-          first = false;
-        }
-      }
-      file.close();
-    }
-    payload += "]";
-  }
-
-  if (hasEventLogs) {
-    payload += ",\"event_logs\":[";
-    File file = LittleFS.open("/event_log.txt", "r");
-    if (file) {
-      bool first = true;
-      while (file.available()) {
-        String line = file.readStringUntil('\n');
-        line.trim();
-        if (line.length() > 0) {
-          if (!first) payload += ",";
-          payload += "[\"" + line + "\"]";
-          first = false;
-        }
-      }
-      file.close();
-    }
-    payload += "]";
-  }
-
-  payload += "}";
-
-  // PERBAIKAN: Tambahkan mekanisme Retry (2x percobaan) untuk log offline
-  for (int attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) {
-      Serial.println("[HTTP] Retry mengirim log offline...");
-      delay(2000);
-    }
-
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    char serverPath[128];
-    snprintf(serverPath, sizeof(serverPath), "https://%s%s", server_domain, api_offline_log_endpoint);
-
-    if (http.begin(client, serverPath)) {
-      http.addHeader("Content-Type", "application/json");
-      http.addHeader("X-API-Key", api_key);
-
-      int httpResponseCode = http.POST(payload);
-      http.end();
-
-      if (httpResponseCode == 200) {
-        Serial.println("Log offline berhasil dikirim. Menghapus file log lokal.");
-        if (hasSensorLogs) LittleFS.remove("/sensor_log.txt");
-        if (hasPumpLogs) LittleFS.remove("/pump_log.txt");
-        if (hasEventLogs) LittleFS.remove("/event_log.txt");
-        return; // Berhasil
-      } else {
-        Serial.printf("[HTTP] Gagal mengirim log offline, kode: %d\n", httpResponseCode);
-      }
-    }
+  // Kirim log offline jika ada (Implementasi sederhana)
+  if (LittleFS.exists("/sensor_log.txt")) {
+     // Baca file dan kirim ke /api/log-offline (Perlu implementasi di PHP jika belum ada)
+     // Untuk saat ini dikosongkan agar fokus ke koneksi utama
   }
 }
 

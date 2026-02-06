@@ -16,3 +16,7 @@ $router->get('/api/template-preview/{id}', 'Api\DeviceApiController@getTemplateP
 
 // Rute untuk System Automation (Backup Otomatis)
 $router->get('/api/system/backup', 'Api\SystemApiController@autoBackup');
+
+// --- Rute Baru: Token Base URL (Lebih Cepat & Ringan) ---
+$router->post('/api/device/{token}/log', 'Api\TokenDeviceController@log');
+$router->post('/api/device/{token}/update', 'Api\TokenDeviceController@update');

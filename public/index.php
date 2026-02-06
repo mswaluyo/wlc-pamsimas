@@ -4,7 +4,7 @@
 // Mulai atau lanjutkan session di setiap request
 // Konfigurasi session agar login bertahan selama 30 hari (2592000 detik)
 session_start([
-    'cookie_lifetime' => 2592000,
+    'cookie_lifetime' => 0, // Default: Cookie sesi (hilang saat browser ditutup)
     'gc_maxlifetime' => 2592000,
 ]);
 
